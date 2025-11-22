@@ -39,12 +39,19 @@ const ProfileSetup = () => {
     }
 
     if (user) {
-      // Fetch user role
+      // Check for pending role from signup
+      const pendingRole = sessionStorage.getItem('pending_role');
+      if (pendingRole) {
+        setRole(pendingRole as string);
+        return;
+      }
+
+      // Fetch user role if already exists
       supabase
         .from("user_roles")
         .select("role")
         .eq("user_id", user.id)
-        .single()
+        .maybeSingle()
         .then(({ data }) => {
           if (data) {
             setRole(data.role);
@@ -60,6 +67,24 @@ const ProfileSetup = () => {
     setLoading(true);
 
     try {
+      // First, insert or ensure user role exists
+      const { error: roleError } = await supabase
+        .from("user_roles")
+        .upsert({ user_id: user.id, role: role as any }, { onConflict: 'user_id,role' });
+
+      if (roleError) {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: roleError.message,
+        });
+        setLoading(false);
+        return;
+      }
+
+      // Clear pending role from session storage
+      sessionStorage.removeItem('pending_role');
+
       if (role === "student") {
         // Validate student data
         const validation = studentSchema.safeParse({
