@@ -50,7 +50,7 @@ const Login = () => {
             .from("user_roles")
             .select("role")
             .eq("user_id", data.user.id)
-            .single();
+            .maybeSingle();
 
           if (roleData) {
             navigate(`/dashboard/${roleData.role}`);

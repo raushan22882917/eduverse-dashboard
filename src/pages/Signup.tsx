@@ -66,19 +66,8 @@ const Signup = () => {
       }
 
       if (data.user) {
-        // Insert user role
-        const { error: roleError } = await supabase
-          .from("user_roles")
-          .insert({ user_id: data.user.id, role });
-
-        if (roleError) {
-          toast({
-            variant: "destructive",
-            title: "Error",
-            description: "Failed to set user role",
-          });
-          return;
-        }
+        // Store role in session storage temporarily for profile setup
+        sessionStorage.setItem('pending_role', role);
 
         toast({
           title: "Account created!",
