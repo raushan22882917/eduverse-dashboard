@@ -587,4 +587,142 @@ export const api = {
       });
     },
   },
+
+  // Translation endpoints
+  translation: {
+    translate: (data: {
+      text: string;
+      target_language?: string;
+      source_language?: string;
+    }) =>
+      fetchAPI<any>('/translation/translate', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    translateBatch: (data: {
+      texts: string[];
+      target_language?: string;
+      source_language?: string;
+    }) =>
+      fetchAPI<any>('/translation/translate/batch', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    detectLanguage: (text: string) =>
+      fetchAPI<any>('/translation/detect', {
+        method: 'POST',
+        body: JSON.stringify({ text }),
+      }),
+    getSupportedLanguages: () =>
+      fetchAPI<any>('/translation/languages'),
+  },
+
+  // AI Tutoring endpoints
+  aiTutoring: {
+    getFeedback: (data: {
+      user_id: string;
+      content: string;
+      subject: string;
+      performance_data?: Record<string, any>;
+    }) =>
+      fetchAPI<any>('/ai-tutoring/feedback', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    generateStudyPlan: (data: {
+      user_id: string;
+      subject: string;
+      days?: number;
+      hours_per_day?: number;
+    }) =>
+      fetchAPI<any>('/ai-tutoring/study-plan', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    answerQuestion: (data: {
+      user_id: string;
+      question: string;
+      subject: string;
+      context?: string;
+    }) =>
+      fetchAPI<any>('/ai-tutoring/answer', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+  },
+
+  // Teacher Tools endpoints
+  teacher: {
+    generateLessonPlan: (data: {
+      teacher_id: string;
+      subject: string;
+      topic: string;
+      duration_minutes?: number;
+      class_grade?: number;
+      learning_objectives?: string[];
+    }) =>
+      fetchAPI<any>('/teacher/lesson-plan', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    createAssessment: (data: {
+      teacher_id: string;
+      subject: string;
+      topic: string;
+      question_count?: number;
+      difficulty_levels?: string[];
+    }) =>
+      fetchAPI<any>('/teacher/assessment', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    generateParentMessage: (data: {
+      teacher_id: string;
+      student_id: string;
+      message_type: 'progress_update' | 'concern' | 'achievement' | 'general';
+      subject?: string;
+      custom_content?: string;
+    }) =>
+      fetchAPI<any>('/teacher/parent-message', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+  },
+
+  // Well-being & Focus endpoints
+  wellbeing: {
+    startFocusSession: (data: {
+      user_id: string;
+      duration_minutes: number;
+      subject?: string;
+      goal?: string;
+    }) =>
+      fetchAPI<any>('/wellbeing/focus/start', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    endFocusSession: (data: {
+      session_id: string;
+      user_id: string;
+      distractions_count?: number;
+      completed?: boolean;
+    }) =>
+      fetchAPI<any>('/wellbeing/focus/end', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    getMotivation: (userId: string, context?: string) => {
+      const queryParams = new URLSearchParams();
+      if (context) queryParams.append('context', context);
+      const query = queryParams.toString();
+      return fetchAPI<any>(`/wellbeing/motivation/${userId}${query ? `?${query}` : ''}`);
+    },
+    getDistractionGuardSettings: (userId: string) =>
+      fetchAPI<any>(`/wellbeing/distraction-guard/${userId}`),
+    updateDistractionGuardSettings: (userId: string, settings: Record<string, any>) =>
+      fetchAPI<any>(`/wellbeing/distraction-guard/${userId}`, {
+        method: 'PUT',
+        body: JSON.stringify(settings),
+      }),
+  },
 };

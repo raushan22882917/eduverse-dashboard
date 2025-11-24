@@ -28,6 +28,9 @@ import ExamList from "./pages/ExamList";
 import ExamTest from "./pages/ExamTest";
 import ExamResults from "./pages/ExamResults";
 import ExamHistory from "./pages/ExamHistory";
+import FocusTimer from "./pages/FocusTimer";
+import AITutoring from "./pages/AITutoring";
+import TeacherTools from "./pages/TeacherTools";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -64,7 +67,10 @@ const App = () => (
             <Route path="/dashboard/student/exam/start/:examSetId" element={<ExamTest />} />
             <Route path="/dashboard/student/exam/results/:sessionId" element={<ExamResults />} />
             <Route path="/dashboard/student/exam/history" element={<ExamHistory />} />
+            <Route path="/dashboard/student/focus" element={<FocusTimer />} />
+            <Route path="/dashboard/student/ai-tutoring" element={<AITutoring />} />
             <Route path="/dashboard/teacher" element={<TeacherDashboard />} />
+            <Route path="/dashboard/teacher/tools" element={<TeacherTools />} />
             <Route path="/dashboard/admin" element={<AdminDashboard />} />
             <Route path="/dashboard/admin/users" element={<UserManagement />} />
             <Route path="/dashboard/admin/analytics" element={<Analytics />} />

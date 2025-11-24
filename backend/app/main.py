@@ -8,7 +8,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from app.config import settings
-from app.routers import health, rag, doubt, homework, microplan, exam, videos, hots, admin, progress, analytics
+from app.routers import health, rag, doubt, homework, microplan, exam, videos, hots, admin, progress, analytics, translation, ai_tutoring, teacher_tools, wellbeing
 from app.utils.exceptions import (
     APIException,
     api_exception_handler,
@@ -58,6 +58,10 @@ app.include_router(hots.router, prefix="/api/hots", tags=["hots"])
 app.include_router(admin.router, prefix="/api", tags=["admin"])
 app.include_router(progress.router, prefix="/api", tags=["progress"])
 app.include_router(analytics.router, prefix="/api", tags=["analytics"])
+app.include_router(translation.router, prefix="/api", tags=["translation"])
+app.include_router(ai_tutoring.router, prefix="/api", tags=["ai-tutoring"])
+app.include_router(teacher_tools.router, prefix="/api", tags=["teacher-tools"])
+app.include_router(wellbeing.router, prefix="/api", tags=["wellbeing"])
 
 # Placeholder routers for future implementation
 # app.include_router(auth.router, prefix="/api/auth", tags=["auth"])

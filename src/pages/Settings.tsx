@@ -24,8 +24,11 @@ import {
   Phone,
   MapPin,
   Save,
-  Camera
+  Camera,
+  Wifi,
+  WifiOff
 } from "lucide-react";
+import { LanguageSelector } from "@/components/LanguageSelector";
 
 const Settings = () => {
   const { user, loading } = useAuth();
@@ -41,6 +44,7 @@ const Settings = () => {
   const [pushNotifications, setPushNotifications] = useState(false);
   const [theme, setTheme] = useState("light");
   const [language, setLanguage] = useState("en");
+  const [lowBandwidthMode, setLowBandwidthMode] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -49,6 +53,8 @@ const Settings = () => {
       setFullName(user.user_metadata?.full_name || "");
       setEmail(user.email || "");
       setLocation(user.user_metadata?.location || "");
+      setLanguage(localStorage.getItem('preferred_language') || 'en');
+      setLowBandwidthMode(localStorage.getItem('low_bandwidth_mode') === 'true');
       fetchProfile();
     }
   }, [user, loading, navigate]);
@@ -329,20 +335,79 @@ const Settings = () => {
               </div>
               <CardDescription>Choose your preferred language</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="language">Language</Label>
-                <Select value={language} onValueChange={setLanguage}>
-                  <SelectTrigger id="language">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="en">English</SelectItem>
-                    <SelectItem value="es">Spanish</SelectItem>
-                    <SelectItem value="fr">French</SelectItem>
-                    <SelectItem value="de">German</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label>Language</Label>
+                <LanguageSelector
+                  defaultLanguage={language}
+                  onLanguageChange={(lang) => {
+                    setLanguage(lang);
+                    localStorage.setItem('preferred_language', lang);
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="low-bandwidth">Low-Bandwidth Mode</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Optimize for slower connections by reducing data usage
+                  </p>
+                </div>
+                <Switch
+                  id="low-bandwidth"
+                  checked={lowBandwidthMode}
+                  onCheckedChange={(checked) => {
+                    setLowBandwidthMode(checked);
+                    localStorage.setItem('low_bandwidth_mode', checked.toString());
+                    if (checked) {
+                      document.documentElement.setAttribute('data-low-bandwidth', 'true');
+                    } else {
+                      document.documentElement.removeAttribute('data-low-bandwidth');
+                    }
+                  }}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Access & Inclusion */}
+          <Card className="mb-6">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <Globe className="h-5 w-5" />
+                <CardTitle>Access & Inclusion</CardTitle>
+              </div>
+              <CardDescription>Accessibility and performance settings</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="screen-reader">Screen Reader Support</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Enhanced ARIA labels and semantic HTML
+                  </p>
+                </div>
+                <Switch
+                  id="screen-reader"
+                  defaultChecked={true}
+                  disabled={true}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="low-bandwidth-access">Low-Bandwidth Optimization</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Compress images and reduce data usage
+                  </p>
+                </div>
+                <Switch
+                  id="low-bandwidth-access"
+                  checked={lowBandwidthMode}
+                  onCheckedChange={(checked) => {
+                    setLowBandwidthMode(checked);
+                    localStorage.setItem('low_bandwidth_mode', checked.toString());
+                  }}
+                />
               </div>
             </CardContent>
           </Card>
