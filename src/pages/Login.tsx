@@ -35,28 +35,19 @@ const Login = () => {
       }
 
       if (data.user) {
-        // Check if profile is completed
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("profile_completed")
+        // Get user role and navigate to appropriate dashboard
+        const { data: roleData } = await supabase
+          .from("user_roles")
+          .select("role")
           .eq("user_id", data.user.id)
-          .single();
+          .maybeSingle();
 
-        if (!profile?.profile_completed) {
-          navigate("/profile-setup");
+        if (roleData) {
+          // Navigate to the appropriate dashboard based on role
+          navigate(`/dashboard/${roleData.role}`);
         } else {
-          // Get user role and navigate to appropriate dashboard
-          const { data: roleData } = await supabase
-            .from("user_roles")
-            .select("role")
-            .eq("user_id", data.user.id)
-            .maybeSingle();
-
-          if (roleData) {
-            navigate(`/dashboard/${roleData.role}`);
-          } else {
-            navigate("/profile-setup");
-          }
+          // Default to student dashboard if no role found
+          navigate("/dashboard/student");
         }
       }
     } catch (error: any) {

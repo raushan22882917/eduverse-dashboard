@@ -8,7 +8,10 @@ import {
   Settings,
   GraduationCap,
   HelpCircle,
-  LogOut
+  LogOut,
+  User,
+  FileText,
+  Target
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -56,12 +59,36 @@ const StudentSidebar = () => {
             <span className="text-sm font-medium">Dashboard</span>
           </NavLink>
           <NavLink
+            to="/dashboard/student/classroom"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-accent transition-colors"
+            activeClassName="bg-primary/20 text-primary hover:bg-primary/30"
+          >
+            <BookOpen className="h-5 w-5" />
+            <span className="text-sm font-medium">Classroom</span>
+          </NavLink>
+          <NavLink
             to="/dashboard/student/subjects"
             className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-accent transition-colors"
             activeClassName="bg-primary/20 text-primary hover:bg-primary/30"
           >
             <BookOpen className="h-5 w-5" />
             <span className="text-sm font-medium">All Subjects</span>
+          </NavLink>
+          <NavLink
+            to="/dashboard/student/content"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-accent transition-colors"
+            activeClassName="bg-primary/20 text-primary hover:bg-primary/30"
+          >
+            <FileText className="h-5 w-5" />
+            <span className="text-sm font-medium">Content Library</span>
+          </NavLink>
+          <NavLink
+            to="/dashboard/student/exams"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-accent transition-colors"
+            activeClassName="bg-primary/20 text-primary hover:bg-primary/30"
+          >
+            <FileText className="h-5 w-5" />
+            <span className="text-sm font-medium">Practice Exams</span>
           </NavLink>
           <NavLink
             to="/dashboard/student/achievements"
@@ -72,12 +99,44 @@ const StudentSidebar = () => {
             <span className="text-sm font-medium">Achievements</span>
           </NavLink>
           <NavLink
+            to="/dashboard/student/microplan"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-accent transition-colors"
+            activeClassName="bg-primary/20 text-primary hover:bg-primary/30"
+          >
+            <Target className="h-5 w-5" />
+            <span className="text-sm font-medium">Microplan</span>
+          </NavLink>
+          <NavLink
+            to="/dashboard/student/doubt"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-accent transition-colors"
+            activeClassName="bg-primary/20 text-primary hover:bg-primary/30"
+          >
+            <MessageSquare className="h-5 w-5" />
+            <span className="text-sm font-medium">Doubt Solver</span>
+          </NavLink>
+          <NavLink
+            to="/dashboard/student/homework"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-accent transition-colors"
+            activeClassName="bg-primary/20 text-primary hover:bg-primary/30"
+          >
+            <BookOpen className="h-5 w-5" />
+            <span className="text-sm font-medium">Homework</span>
+          </NavLink>
+          <NavLink
             to="/dashboard/student/messages"
             className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-accent transition-colors"
             activeClassName="bg-primary/20 text-primary hover:bg-primary/30"
           >
             <MessageSquare className="h-5 w-5" />
             <span className="text-sm font-medium">Messages</span>
+          </NavLink>
+          <NavLink
+            to="/profile-setup"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-accent transition-colors"
+            activeClassName="bg-primary/20 text-primary hover:bg-primary/30"
+          >
+            <User className="h-5 w-5" />
+            <span className="text-sm font-medium">Profile Setup</span>
           </NavLink>
           <NavLink
             to="/dashboard/student/settings"

@@ -1,13 +1,31 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import StudentSidebar from "@/components/StudentSidebar";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, CheckCircle2, Clock, TrendingUp, Calculator, Microscope } from "lucide-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ArrowRight, CheckCircle2, Clock, TrendingUp, Calculator, Microscope, BookOpen, Target, FlaskConical } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
 
 const StudentDashboard = () => {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
+  const { toast } = useToast();
+  const [studentData, setStudentData] = useState({
+    grade: null as number | null,
+    schoolName: "",
+    lessonsCompleted: 0,
+    timeSpent: "0h",
+    overallScore: 0,
+    mathProgress: 0,
+    scienceProgress: 0
+  });
+  const [todayMicroplan, setTodayMicroplan] = useState<any>(null);
+  const [progressSummary, setProgressSummary] = useState<any>(null);
+  const [loadingData, setLoadingData] = useState(true);
+  const [recommendedTopics, setRecommendedTopics] = useState<any[]>([]);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -15,7 +33,132 @@ const StudentDashboard = () => {
     }
   }, [user, loading, navigate]);
 
-  if (loading) {
+  useEffect(() => {
+    const fetchStudentData = async () => {
+      if (!user) return;
+
+      try {
+        setLoadingData(true);
+        
+        // Fetch student profile
+        const { data: studentProfile, error: profileError } = await supabase
+          .from("student_profiles")
+          .select("class_grade, school_name")
+          .eq("user_id", user.id)
+          .single();
+
+        if (profileError && profileError.code !== "PGRST116") {
+          console.error("Error fetching student profile:", profileError);
+        }
+
+        if (studentProfile) {
+          setStudentData(prev => ({
+            ...prev,
+            grade: studentProfile.class_grade,
+            schoolName: studentProfile.school_name || ""
+          }));
+        }
+
+        // Fetch progress summary
+        try {
+          const summary = await api.progress.getSummary(user.id);
+          setProgressSummary(summary);
+          
+          // Calculate overall stats from summary
+          if (summary) {
+            const totalLessons = summary.total_topics_attempted || summary.total_topics || 0;
+            const avgScore = summary.average_mastery || summary.avg_mastery_score || 0;
+            const totalTime = summary.total_time_minutes || 0;
+            
+            setStudentData(prev => ({
+              ...prev,
+              lessonsCompleted: totalLessons,
+              timeSpent: `${Math.round(totalTime / 60)}h`,
+              overallScore: Math.round(avgScore),
+            }));
+
+            // Calculate subject-specific progress
+            const breakdown = summary.subject_breakdown || summary.subjects || {};
+            if (breakdown) {
+              const mathProgress = breakdown.mathematics?.average_mastery || breakdown.mathematics?.avg_mastery_score || 0;
+              const scienceProgress = breakdown.physics?.average_mastery || breakdown.physics?.avg_mastery_score || 
+                                     breakdown.chemistry?.average_mastery || breakdown.chemistry?.avg_mastery_score || 
+                                     breakdown.biology?.average_mastery || breakdown.biology?.avg_mastery_score || 0;
+              
+              setStudentData(prev => ({
+                ...prev,
+                mathProgress: Math.round(mathProgress),
+                scienceProgress: Math.round(scienceProgress),
+              }));
+            }
+          }
+        } catch (error: any) {
+          console.error("Error fetching progress:", error);
+          // Don't show error toast - progress is not critical for dashboard load
+        }
+
+        // Fetch today's microplan
+        try {
+          const microplan = await api.microplan.getToday(user.id);
+          setTodayMicroplan(microplan);
+        } catch (error) {
+          console.error("Error fetching microplan:", error);
+        }
+
+        // Fetch recommended topics based on progress
+        try {
+          const { data: topics, error: topicsError } = await supabase
+            .from("topics")
+            .select("*")
+            .order("order_index", { ascending: true })
+            .limit(5);
+
+          if (!topicsError && topics) {
+            // Get progress for each topic
+            const topicsWithProgress = await Promise.all(
+              topics.map(async (topic) => {
+                try {
+                  const topicProgress = await api.progress.getTopicProgress({
+                    user_id: user.id,
+                    topic_id: topic.id,
+                  });
+                  return {
+                    ...topic,
+                    progress: topicProgress?.mastery_score || 0,
+                    isCompleted: (topicProgress?.mastery_score || 0) >= 80,
+                  };
+                } catch {
+                  return {
+                    ...topic,
+                    progress: 0,
+                    isCompleted: false,
+                  };
+                }
+              })
+            );
+            setRecommendedTopics(topicsWithProgress);
+          }
+        } catch (error) {
+          console.error("Error fetching recommended topics:", error);
+        }
+      } catch (error) {
+        console.error("Error fetching student data:", error);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to load dashboard data",
+        });
+      } finally {
+        setLoadingData(false);
+      }
+    };
+
+    if (user) {
+      fetchStudentData();
+    }
+  }, [user, toast]);
+
+  if (loading || loadingData) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <p className="text-muted-foreground">Loading...</p>
@@ -24,6 +167,25 @@ const StudentDashboard = () => {
   }
 
   const userName = user?.user_metadata?.full_name?.split(" ")[0] || "there";
+
+  const handleGenerateMicroplan = async () => {
+    if (!user) return;
+    
+    try {
+      const microplan = await api.microplan.generate({ user_id: user.id });
+      setTodayMicroplan(microplan);
+      toast({
+        title: "Microplan Generated",
+        description: "Your daily learning plan is ready!",
+      });
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to generate microplan",
+      });
+    }
+  };
 
   return (
     <div className="flex min-h-screen w-full">
@@ -40,25 +202,58 @@ const StudentDashboard = () => {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Left Column */}
             <div className="lg:col-span-2 flex flex-col gap-8">
-              {/* Up Next Card */}
-              <div className="flex items-stretch justify-between gap-6 rounded-lg bg-card p-6 border">
-                <div className="flex flex-col gap-4">
-                  <div className="flex flex-col gap-1">
-                    <p className="text-primary text-sm font-medium">UP NEXT</p>
-                    <p className="text-xl font-bold">Algebra - Chapter 3</p>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Dive into solving linear equations and master the basics.
-                    </p>
-                  </div>
-                  <Button className="w-fit gap-2">
-                    <span>Start Lesson</span>
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </div>
-                <div className="hidden sm:flex items-center justify-center w-48 bg-primary/10 rounded-lg">
-                  <Calculator className="h-20 w-20 text-primary" />
-                </div>
-              </div>
+              {/* Today's Microplan Card */}
+              {todayMicroplan ? (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Target className="h-5 w-5 text-primary" />
+                      Today's Learning Plan
+                    </CardTitle>
+                    <CardDescription>Your personalized daily microplan</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {todayMicroplan.concept_summary && (
+                      <div className="p-4 bg-primary/5 rounded-lg border border-primary/20">
+                        <p className="text-sm font-semibold text-primary mb-2">Concept Summary</p>
+                        <p className="text-sm">{todayMicroplan.concept_summary.topic_name}</p>
+                      </div>
+                    )}
+                    {todayMicroplan.pyqs && todayMicroplan.pyqs.length > 0 && (
+                      <div className="p-4 bg-blue-500/5 rounded-lg border border-blue-500/20">
+                        <p className="text-sm font-semibold text-blue-500 mb-2">PYQs ({todayMicroplan.pyqs.length})</p>
+                        <p className="text-sm">Practice previous year questions</p>
+                      </div>
+                    )}
+                    {todayMicroplan.hots_question && (
+                      <div className="p-4 bg-purple-500/5 rounded-lg border border-purple-500/20">
+                        <p className="text-sm font-semibold text-purple-500 mb-2">HOTS Question</p>
+                        <p className="text-sm">Challenge yourself with higher-order thinking</p>
+                      </div>
+                    )}
+                    <Button onClick={() => navigate("/dashboard/student/microplan")} className="w-full">
+                      View Full Plan
+                      <ArrowRight className="h-4 w-4 ml-2" />
+                    </Button>
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Target className="h-5 w-5 text-primary" />
+                      Daily Learning Plan
+                    </CardTitle>
+                    <CardDescription>Get your personalized microplan for today</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Button onClick={handleGenerateMicroplan} className="w-full gap-2">
+                      <Target className="h-4 w-4" />
+                      Generate Today's Plan
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Progress Overview */}
               <h2 className="text-xl font-bold">Progress Overview</h2>
@@ -66,22 +261,39 @@ const StudentDashboard = () => {
                 <div className="flex flex-col gap-3 p-4 bg-card rounded-lg border">
                   <div className="flex justify-between items-center">
                     <p className="text-base font-medium">Math Progress</p>
-                    <p className="text-primary text-sm font-semibold">75%</p>
+                    <p className="text-primary text-sm font-semibold">{studentData.mathProgress}%</p>
                   </div>
                   <div className="w-full bg-muted rounded-full h-2.5">
-                    <div className="bg-primary h-2.5 rounded-full" style={{ width: "75%" }}></div>
+                    <div className="bg-primary h-2.5 rounded-full" style={{ width: `${studentData.mathProgress}%` }}></div>
                   </div>
                 </div>
                 <div className="flex flex-col gap-3 p-4 bg-card rounded-lg border">
                   <div className="flex justify-between items-center">
                     <p className="text-base font-medium">Science Progress</p>
-                    <p className="text-chart-1 text-sm font-semibold">60%</p>
+                    <p className="text-chart-1 text-sm font-semibold">{studentData.scienceProgress}%</p>
                   </div>
                   <div className="w-full bg-muted rounded-full h-2.5">
-                    <div className="bg-chart-1 h-2.5 rounded-full" style={{ width: "60%" }}></div>
+                    <div className="bg-chart-1 h-2.5 rounded-full" style={{ width: `${studentData.scienceProgress}%` }}></div>
                   </div>
                 </div>
               </div>
+              
+              {/* Student Info */}
+              {studentData.grade && (
+                <div className="p-4 bg-card rounded-lg border">
+                  <div className="flex items-center gap-4">
+                    <div className="bg-primary/10 p-3 rounded-lg">
+                      <Calculator className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <p className="font-semibold">Grade {studentData.grade} Student</p>
+                      {studentData.schoolName && (
+                        <p className="text-sm text-muted-foreground">{studentData.schoolName}</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Key Stats */}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
@@ -90,7 +302,7 @@ const StudentDashboard = () => {
                     <CheckCircle2 className="h-5 w-5 text-primary" />
                   </div>
                   <div>
-                    <p className="text-2xl font-bold">42</p>
+                    <p className="text-2xl font-bold">{studentData.lessonsCompleted}</p>
                     <p className="text-sm text-muted-foreground">Lessons Done</p>
                   </div>
                 </div>
@@ -99,7 +311,7 @@ const StudentDashboard = () => {
                     <Clock className="h-5 w-5 text-chart-1" />
                   </div>
                   <div>
-                    <p className="text-2xl font-bold">12h</p>
+                    <p className="text-2xl font-bold">{studentData.timeSpent}</p>
                     <p className="text-sm text-muted-foreground">Time Spent</p>
                   </div>
                 </div>
@@ -108,58 +320,76 @@ const StudentDashboard = () => {
                     <TrendingUp className="h-5 w-5 text-chart-2" />
                   </div>
                   <div>
-                    <p className="text-2xl font-bold">89%</p>
+                    <p className="text-2xl font-bold">{studentData.overallScore}%</p>
                     <p className="text-sm text-muted-foreground">Overall Score</p>
                   </div>
                 </div>
               </div>
 
-              {/* Lesson Plan */}
-              <h2 className="text-xl font-bold pt-4">Personalized Lesson Plan</h2>
-              <div className="flex flex-col gap-3">
-                <div className="flex items-center justify-between p-4 bg-card rounded-lg border hover:shadow-md transition-shadow">
-                  <div className="flex items-center gap-4">
-                    <div className="bg-primary/10 p-3 rounded-lg">
-                      <Calculator className="h-5 w-5 text-primary" />
-                    </div>
-                    <div>
-                      <p className="font-semibold">Geometry - Angles</p>
-                      <p className="text-sm text-muted-foreground">Math</p>
-                    </div>
+              {/* Recommended Topics */}
+              {recommendedTopics.length > 0 && (
+                <>
+                  <h2 className="text-xl font-bold pt-4">Recommended Topics</h2>
+                  <div className="flex flex-col gap-3">
+                    {recommendedTopics.slice(0, 3).map((topic) => {
+                      const subjectIcons: Record<string, any> = {
+                        mathematics: Calculator,
+                        physics: Microscope,
+                        chemistry: FlaskConical,
+                        biology: BookOpen,
+                      };
+                      const Icon = subjectIcons[topic.subject] || BookOpen;
+                      const iconColors: Record<string, string> = {
+                        mathematics: "bg-primary/10 text-primary",
+                        physics: "bg-chart-1/10 text-chart-1",
+                        chemistry: "bg-blue-500/10 text-blue-500",
+                        biology: "bg-green-500/10 text-green-500",
+                      };
+                      const iconColor = iconColors[topic.subject] || "bg-muted text-muted-foreground";
+
+                      return (
+                        <div
+                          key={topic.id}
+                          className={`flex items-center justify-between p-4 bg-card rounded-lg border hover:shadow-md transition-shadow ${
+                            topic.isCompleted ? "opacity-60" : ""
+                          }`}
+                        >
+                          <div className="flex items-center gap-4">
+                            <div className={`${iconColor} p-3 rounded-lg`}>
+                              <Icon className="h-5 w-5" />
+                            </div>
+                            <div>
+                              <p className={`font-semibold ${topic.isCompleted ? "text-muted-foreground" : ""}`}>
+                                {topic.chapter} - {topic.name}
+                              </p>
+                              <p className="text-sm text-muted-foreground capitalize">
+                                {topic.subject}
+                                {topic.progress > 0 && ` • ${Math.round(topic.progress)}% mastered`}
+                              </p>
+                            </div>
+                          </div>
+                          {topic.isCompleted ? (
+                            <span className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+                              <CheckCircle2 className="h-4 w-4" />
+                              Done
+                            </span>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="gap-1"
+                              onClick={() => navigate(`/dashboard/student/classroom?subject=${topic.subject}&chapter=${topic.id}`)}
+                            >
+                              <span>Start</span>
+                              <ArrowRight className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
-                  <Button variant="ghost" size="sm" className="gap-1">
-                    <span>Start</span>
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </div>
-                <div className="flex items-center justify-between p-4 bg-card rounded-lg border hover:shadow-md transition-shadow">
-                  <div className="flex items-center gap-4">
-                    <div className="bg-chart-1/10 p-3 rounded-lg">
-                      <Microscope className="h-5 w-5 text-chart-1" />
-                    </div>
-                    <div>
-                      <p className="font-semibold">Biology - Cell Structure</p>
-                      <p className="text-sm text-muted-foreground">Science</p>
-                    </div>
-                  </div>
-                  <Button variant="ghost" size="sm" className="gap-1">
-                    <span>Start</span>
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </div>
-                <div className="flex items-center justify-between p-4 bg-card rounded-lg border opacity-60">
-                  <div className="flex items-center gap-4">
-                    <div className="bg-muted p-3 rounded-lg">
-                      <CheckCircle2 className="h-5 w-5 text-muted-foreground" />
-                    </div>
-                    <div>
-                      <p className="font-semibold text-muted-foreground">History - Ancient Civilizations</p>
-                      <p className="text-sm text-muted-foreground">Completed</p>
-                    </div>
-                  </div>
-                  <span className="text-sm font-medium text-muted-foreground">Done</span>
-                </div>
-              </div>
+                </>
+              )}
             </div>
 
             {/* Right Column */}

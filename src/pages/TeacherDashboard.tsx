@@ -1,8 +1,8 @@
 import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Users, GraduationCap } from "lucide-react";
+import { Users, GraduationCap, User } from "lucide-react";
 
 const TeacherDashboard = () => {
   const { user, loading, signOut } = useAuth();
@@ -24,10 +24,28 @@ const TeacherDashboard = () => {
 
   return (
     <div className="flex min-h-screen w-full">
-      <aside className="w-64 flex-shrink-0 bg-card border-r p-4">
-        <div className="flex items-center gap-2 mb-8">
-          <GraduationCap className="h-8 w-8 text-primary" />
-          <h1 className="text-xl font-bold">AI Tutor</h1>
+      <aside className="w-64 flex-shrink-0 bg-card border-r p-4 flex flex-col justify-between">
+        <div>
+          <div className="flex items-center gap-2 mb-8">
+            <GraduationCap className="h-8 w-8 text-primary" />
+            <h1 className="text-xl font-bold">AI Tutor</h1>
+          </div>
+          <nav className="flex flex-col gap-2 mb-8">
+            <Link
+              to="/dashboard/teacher"
+              className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-accent transition-colors"
+            >
+              <Users className="h-5 w-5" />
+              <span className="text-sm font-medium">Dashboard</span>
+            </Link>
+            <Link
+              to="/profile-setup"
+              className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-accent transition-colors"
+            >
+              <User className="h-5 w-5" />
+              <span className="text-sm font-medium">Profile Setup</span>
+            </Link>
+          </nav>
         </div>
         <Button onClick={signOut} variant="outline" className="w-full">
           Sign Out
