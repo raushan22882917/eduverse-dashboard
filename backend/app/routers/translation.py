@@ -7,8 +7,23 @@ from app.utils.exceptions import APIException
 
 router = APIRouter(prefix="/translation", tags=["Translation"])
 
-# Initialize service
-translation_service = TranslationService()
+# Lazy initialization - will be created on first use
+_translation_service = None
+
+def get_translation_service():
+    """Get or create translation service instance"""
+    global _translation_service
+    if _translation_service is None:
+        try:
+            _translation_service = TranslationService()
+        except Exception as e:
+            # If translation service fails to initialize, raise error
+            raise APIException(
+                code="TRANSLATION_SERVICE_UNAVAILABLE",
+                message=f"Translation service is not available: {str(e)}",
+                status_code=503
+            )
+    return _translation_service
 
 
 @router.post("/translate")
@@ -23,7 +38,8 @@ async def translate_text(request: TranslationRequest):
         Translated text
     """
     try:
-        translated_text = translation_service.translate_text(
+        service = get_translation_service()
+        translated_text = service.translate_text(
             text=request.text,
             target_language=request.target_language,
             source_language=request.source_language
@@ -56,7 +72,8 @@ async def translate_batch(request: BatchTranslationRequest):
         List of translated texts
     """
     try:
-        translated_texts = translation_service.translate_batch(
+        service = get_translation_service()
+        translated_texts = service.translate_batch(
             texts=request.texts,
             target_language=request.target_language,
             source_language=request.source_language
@@ -89,7 +106,8 @@ async def detect_language(text: str):
         Detected language and confidence
     """
     try:
-        result = translation_service.detect_language(text)
+        service = get_translation_service()
+        result = service.detect_language(text)
         return {
             "success": True,
             "text": text,
@@ -114,7 +132,8 @@ async def get_supported_languages():
         List of supported languages
     """
     try:
-        languages = translation_service.get_supported_languages()
+        service = get_translation_service()
+        languages = service.get_supported_languages()
         return {
             "success": True,
             "languages": languages

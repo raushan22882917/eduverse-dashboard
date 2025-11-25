@@ -104,8 +104,13 @@ async def answer_question(request: QuestionAnswerRequest):
             **answer
         }
     except APIException as e:
+        print(f"APIException in answer_question: {e.message} (code: {e.code})")
         raise HTTPException(status_code=e.status_code, detail=e.message)
     except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"Unexpected error in answer_question endpoint: {str(e)}")
+        print(f"Traceback: {error_trace}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to answer question: {str(e)}"

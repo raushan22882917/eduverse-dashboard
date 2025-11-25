@@ -9,6 +9,7 @@ from supabase import Client
 from app.config import settings
 from app.models.base import Subject
 from app.utils.exceptions import APIException
+from app.services.wolfram_service import WolframService
 
 # Configure Gemini
 genai.configure(api_key=settings.gemini_api_key)
@@ -19,7 +20,15 @@ class AITutoringService:
     
     def __init__(self, supabase_client: Client):
         self.supabase = supabase_client
-        self.model = genai.GenerativeModel('gemini-pro')
+        # Use gemini-2.5-flash (fast and available) or fallback to gemini-pro-latest
+        try:
+            self.model = genai.GenerativeModel('gemini-2.5-flash')
+        except:
+            try:
+                self.model = genai.GenerativeModel('gemini-pro-latest')
+            except:
+                self.model = genai.GenerativeModel('gemini-pro')
+        self.wolfram_service = WolframService()
     
     async def get_personalized_feedback(
         self,
@@ -204,7 +213,7 @@ Format as JSON with structure:
         context: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Answer student questions with explanations
+        Answer student questions with explanations using Gemini + Wolfram Alpha
         
         Args:
             user_id: Student user ID
@@ -216,45 +225,163 @@ Format as JSON with structure:
             Answer with explanation and related resources
         """
         try:
-            prompt = f"""You are an AI tutor helping a Class 12 student with {subject.value}.
+            # Check if it's a mathematical/numerical question or requests a graph
+            is_math_question = self.wolfram_service.is_numerical_question(question)
+            requests_graph = any(keyword in question.lower() for keyword in ['plot', 'graph', 'visualize', 'draw', 'show'])
+            wolfram_result = None
+            
+            # Use Wolfram Alpha for mathematical questions or graph requests
+            if (is_math_question or requests_graph) and subject.value in ['mathematics', 'physics', 'chemistry']:
+                try:
+                    # For graph requests, include the request in the query
+                    wolfram_query = question
+                    if requests_graph and 'plot' not in question.lower() and 'graph' not in question.lower():
+                        wolfram_query = f"plot {question}"
+                    
+                    wolfram_result = await self.wolfram_service.solve_math_problem(
+                        wolfram_query,
+                        include_steps=True
+                    )
+                except Exception as e:
+                    print(f"Wolfram Alpha error: {e}")
+                    # Continue with Gemini if Wolfram fails
+            
+            # Build enhanced prompt with Wolfram results if available
+            wolfram_context = ""
+            if wolfram_result:
+                wolfram_context = f"""
+Wolfram Alpha Solution:
+- Answer: {wolfram_result.get('answer', 'N/A')}
+- Input Interpretation: {wolfram_result.get('input_interpretation', 'N/A')}
+- Steps: {json.dumps(wolfram_result.get('steps', []), indent=2)}
+"""
+            
+            prompt = f"""You are an expert AI tutor helping a Class 12 student with {subject.value}. Your goal is to TEACH, not just answer. Make learning engaging and comprehensive.
 
 Student's question: {question}
 
 {f"Context from previous conversation: {context}" if context else ""}
 
-Provide:
-1. A clear, step-by-step answer
-2. Explanation of key concepts
-3. Related examples or analogies
-4. Practice suggestions
-5. Common mistakes to avoid
+{wolfram_context if wolfram_result else ""}
 
-Format as JSON with keys: answer, explanation, examples, practice_suggestions, common_mistakes"""
+Provide a comprehensive, educational response that:
+1. **Answer**: Give a clear, step-by-step answer (use Wolfram results if provided, but explain them pedagogically)
+2. **Explanation**: Break down WHY the answer works, not just WHAT the answer is. Explain the underlying concepts, principles, and reasoning
+3. **Teaching Approach**: Use the Socratic method - guide the student to understand, don't just give answers
+4. **Examples**: Provide 2-3 real-world examples or analogies that make the concept relatable
+5. **Step-by-Step Breakdown**: If it's a problem-solving question, show each step with clear reasoning
+6. **Practice Suggestions**: Suggest 2-3 practice problems or exercises to reinforce learning
+7. **Common Mistakes**: Warn about 2-3 common mistakes students make with this concept
+8. **Connections**: Connect this concept to related topics they've learned or will learn
+9. **Visual Aids**: Suggest diagrams, graphs, or visualizations that would help (describe them)
 
-            response = self.model.generate_content(prompt)
-            answer_text = response.text
+Be encouraging, patient, and adapt your explanation to a Class 12 level. Use analogies and examples that resonate with teenagers.
+
+Format as JSON with keys: answer, explanation, examples, step_by_step, practice_suggestions, common_mistakes, connections, visual_aids, teaching_tips"""
+
+            try:
+                response = self.model.generate_content(prompt)
+                answer_text = response.text
+            except Exception as gemini_error:
+                error_msg = str(gemini_error)
+                print(f"Gemini API error: {error_msg}")  # Debug logging
+                if "API key" in error_msg or "API_KEY" in error_msg or "expired" in error_msg.lower():
+                    raise APIException(
+                        code="GEMINI_API_KEY_ERROR",
+                        message="Gemini API key is invalid or expired. Please check your GEMINI_API_KEY in .env file.",
+                        status_code=500
+                    )
+                # Re-raise with more context
+                raise APIException(
+                    code="GEMINI_GENERATION_ERROR",
+                    message=f"Failed to generate response: {error_msg}",
+                    status_code=500
+                )
             
             # Parse JSON response
-            json_match = re.search(r'\{.*\}', answer_text, re.DOTALL)
-            if json_match:
-                answer_data = json.loads(json_match.group())
-            else:
+            try:
+                json_match = re.search(r'\{.*\}', answer_text, re.DOTALL)
+                if json_match:
+                    answer_data = json.loads(json_match.group())
+                else:
+                    # Fallback if JSON parsing fails
+                    print(f"Warning: Could not find JSON in Gemini response. Raw response: {answer_text[:200]}")
+                    answer_data = {
+                        'answer': answer_text,
+                        'explanation': answer_text,
+                        'examples': [],
+                        'step_by_step': [],
+                        'practice_suggestions': [],
+                        'common_mistakes': [],
+                        'connections': [],
+                        'visual_aids': [],
+                        'teaching_tips': []
+                    }
+            except json.JSONDecodeError as json_error:
+                print(f"JSON parsing error: {json_error}. Response text: {answer_text[:500]}")
+                # Fallback if JSON parsing fails
                 answer_data = {
                     'answer': answer_text,
                     'explanation': answer_text,
                     'examples': [],
+                    'step_by_step': [],
                     'practice_suggestions': [],
-                    'common_mistakes': []
+                    'common_mistakes': [],
+                    'connections': [],
+                    'visual_aids': [],
+                    'teaching_tips': []
                 }
+            
+            # Enhance with Wolfram data if available
+            if wolfram_result:
+                # Add Wolfram steps to step_by_step
+                if not answer_data.get('step_by_step'):
+                    answer_data['step_by_step'] = []
+                
+                # Add Wolfram steps
+                for idx, step in enumerate(wolfram_result.get('steps', []), 1):
+                    answer_data['step_by_step'].append({
+                        'step_number': idx,
+                        'description': step.get('title', f'Step {idx}'),
+                        'content': step.get('content', ''),
+                        'source': 'wolfram'
+                    })
+                
+                # Add Wolfram answer if not already included
+                if wolfram_result.get('answer') and not answer_data.get('answer'):
+                    answer_data['answer'] = f"According to Wolfram Alpha: {wolfram_result['answer']}"
+                
+                # Add plots/graphs if available
+                plots = wolfram_result.get('plots')
+                if plots and isinstance(plots, list) and len(plots) > 0:
+                    if not answer_data.get('visual_aids'):
+                        answer_data['visual_aids'] = []
+                    for plot in plots:
+                        if isinstance(plot, dict) and plot.get('url'):
+                            answer_data['visual_aids'].append({
+                                'type': 'plot',
+                                'title': plot.get('title', 'Graph'),
+                                'description': plot.get('title', 'Visualization from Wolfram Alpha'),
+                                'url': plot.get('url'),
+                                'source': 'wolfram'
+                            })
             
             return {
                 'user_id': user_id,
                 'question': question,
                 'subject': subject.value,
                 'answer': answer_data,
+                'wolfram_used': wolfram_result is not None,
                 'timestamp': datetime.utcnow().isoformat()
             }
+        except APIException:
+            # Re-raise API exceptions as-is
+            raise
         except Exception as e:
+            import traceback
+            error_trace = traceback.format_exc()
+            print(f"Unexpected error in answer_question: {str(e)}")
+            print(f"Traceback: {error_trace}")
             raise APIException(
                 code="QUESTION_ANSWER_ERROR",
                 message=f"Failed to answer question: {str(e)}",

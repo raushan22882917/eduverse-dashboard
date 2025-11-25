@@ -263,3 +263,4 @@ For issues or questions:
 2. Review API documentation: `http://localhost:8000/docs`
 3. Check frontend console for errors
 
+

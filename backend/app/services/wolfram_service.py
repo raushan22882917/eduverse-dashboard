@@ -34,6 +34,8 @@ class WolframService:
             r'd/dx|∫|∑|∏|lim',  # Mathematical symbols
             r'matrix|determinant|eigenvalue',  # Linear algebra
             r'differentiate|integrate',  # Calculus verbs
+            r'plot|graph|visualize|draw',  # Graph/plot keywords
+            r'x\^2|x\^3|y\s*=',  # Equations that might need graphs
         ]
     
     def _get_client(self) -> wolframalpha.Client:
@@ -146,9 +148,16 @@ class WolframService:
             
             # Get Wolfram client
             client = self._get_client()
+            if not client:
+                print("Warning: Wolfram Alpha client not initialized")
+                return None
             
             # Query Wolfram Alpha
-            res = client.query(query)
+            try:
+                res = client.query(query)
+            except Exception as query_error:
+                print(f"Wolfram Alpha query error: {query_error}")
+                return None
             
             # Parse response
             result = self._parse_wolfram_response(res, include_steps)
@@ -160,7 +169,9 @@ class WolframService:
             return result
             
         except Exception as e:
+            import traceback
             print(f"Wolfram Alpha error: {e}")
+            print(f"Traceback: {traceback.format_exc()}")
             return None
     
     def _parse_wolfram_response(
@@ -210,13 +221,20 @@ class WolframService:
                         })
                 
                 # Plots/Visualizations
-                elif "plot" in pod_title or "graph" in pod_title:
+                elif "plot" in pod_title or "graph" in pod_title or "visual" in pod_title:
                     for subpod in pod.subpods:
                         if hasattr(subpod, 'img') and subpod.img:
-                            result["plots"].append({
-                                "title": pod.title,
-                                "url": subpod.img.src if hasattr(subpod.img, 'src') else None
-                            })
+                            img_url = None
+                            if hasattr(subpod.img, 'src'):
+                                img_url = subpod.img.src
+                            elif hasattr(subpod.img, 'url'):
+                                img_url = subpod.img.url
+                            
+                            if img_url:
+                                result["plots"].append({
+                                    "title": pod.title,
+                                    "url": img_url
+                                })
             
             # Return None if no answer found
             if result["answer"] is None:
@@ -225,7 +243,9 @@ class WolframService:
             return result
             
         except Exception as e:
+            import traceback
             print(f"Response parsing error: {e}")
+            print(f"Traceback: {traceback.format_exc()}")
             return None
     
     def _extract_pod_text(self, pod) -> Optional[str]:

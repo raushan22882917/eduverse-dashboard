@@ -87,3 +87,4 @@ class BatchTranslationRequest(BaseModel):
     target_language: str = Field(default="en", min_length=2, max_length=5)
     source_language: Optional[str] = Field(default=None, min_length=2, max_length=5)
 
+

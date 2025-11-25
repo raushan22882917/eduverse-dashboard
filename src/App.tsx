@@ -31,6 +31,7 @@ import ExamHistory from "./pages/ExamHistory";
 import FocusTimer from "./pages/FocusTimer";
 import AITutoring from "./pages/AITutoring";
 import TeacherTools from "./pages/TeacherTools";
+import Chat from "./pages/Chat";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -69,6 +70,7 @@ const App = () => (
             <Route path="/dashboard/student/exam/history" element={<ExamHistory />} />
             <Route path="/dashboard/student/focus" element={<FocusTimer />} />
             <Route path="/dashboard/student/ai-tutoring" element={<AITutoring />} />
+            <Route path="/dashboard/student/chat" element={<Chat />} />
             <Route path="/dashboard/teacher" element={<TeacherDashboard />} />
             <Route path="/dashboard/teacher/tools" element={<TeacherTools />} />
             <Route path="/dashboard/admin" element={<AdminDashboard />} />

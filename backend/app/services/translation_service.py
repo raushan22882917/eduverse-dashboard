@@ -1,7 +1,7 @@
 """Translation service using Google Cloud Translation API"""
 
 from typing import List, Optional
-from google.cloud import translate_v2 as translate
+from google.cloud import translate
 from app.config import settings
 from app.utils.exceptions import APIException
 
@@ -12,7 +12,15 @@ class TranslationService:
     def __init__(self):
         """Initialize translation service"""
         try:
-            self.client = translate.Client()
+            # Use v3 API (TranslationServiceClient)
+            # Only initialize if credentials are available
+            import os
+            if not os.getenv('GOOGLE_APPLICATION_CREDENTIALS') and not settings.google_application_credentials:
+                raise Exception("Google Cloud credentials not configured. Set GOOGLE_APPLICATION_CREDENTIALS environment variable.")
+            
+            self.client = translate.TranslationServiceClient()
+            self.project_id = settings.google_cloud_project
+            self.parent = f"projects/{self.project_id}/locations/global"
         except Exception as e:
             raise APIException(
                 code="TRANSLATION_INIT_ERROR",
@@ -38,18 +46,18 @@ class TranslationService:
             Translated text
         """
         try:
+            request_params = {
+                "parent": self.parent,
+                "contents": [text],
+                "mime_type": "text/plain",
+                "target_language_code": target_language,
+            }
+            
             if source_language:
-                result = self.client.translate(
-                    text,
-                    target_language=target_language,
-                    source_language=source_language
-                )
-            else:
-                result = self.client.translate(
-                    text,
-                    target_language=target_language
-                )
-            return result['translatedText']
+                request_params["source_language_code"] = source_language
+            
+            response = self.client.translate_text(request=request_params)
+            return response.translations[0].translated_text
         except Exception as e:
             raise APIException(
                 code="TRANSLATION_ERROR",
@@ -75,18 +83,18 @@ class TranslationService:
             List of translated texts
         """
         try:
+            request_params = {
+                "parent": self.parent,
+                "contents": texts,
+                "mime_type": "text/plain",
+                "target_language_code": target_language,
+            }
+            
             if source_language:
-                results = self.client.translate(
-                    texts,
-                    target_language=target_language,
-                    source_language=source_language
-                )
-            else:
-                results = self.client.translate(
-                    texts,
-                    target_language=target_language
-                )
-            return [result['translatedText'] for result in results]
+                request_params["source_language_code"] = source_language
+            
+            response = self.client.translate_text(request=request_params)
+            return [translation.translated_text for translation in response.translations]
         except Exception as e:
             raise APIException(
                 code="TRANSLATION_ERROR",
@@ -105,10 +113,16 @@ class TranslationService:
             Dictionary with 'language' and 'confidence' keys
         """
         try:
-            result = self.client.detect_language(text)
+            response = self.client.detect_language(
+                request={
+                    "parent": self.parent,
+                    "content": text,
+                    "mime_type": "text/plain",
+                }
+            )
             return {
-                'language': result['language'],
-                'confidence': result['confidence']
+                'language': response.languages[0].language_code,
+                'confidence': response.languages[0].confidence
             }
         except Exception as e:
             raise APIException(
@@ -125,12 +139,24 @@ class TranslationService:
             List of dictionaries with language codes and names
         """
         try:
-            languages = self.client.get_languages()
-            return languages
+            response = self.client.get_supported_languages(parent=self.parent)
+            return [
+                {
+                    'language': lang.language_code,
+                    'name': lang.display_name
+                }
+                for lang in response.languages
+            ]
         except Exception as e:
-            raise APIException(
-                code="LANGUAGES_FETCH_ERROR",
-                message=f"Failed to fetch supported languages: {str(e)}",
-                status_code=500
-            )
+            # Fallback to common languages if API fails
+            return [
+                {'language': 'en', 'name': 'English'},
+                {'language': 'hi', 'name': 'Hindi'},
+                {'language': 'es', 'name': 'Spanish'},
+                {'language': 'fr', 'name': 'French'},
+                {'language': 'de', 'name': 'German'},
+                {'language': 'zh', 'name': 'Chinese'},
+                {'language': 'ja', 'name': 'Japanese'},
+                {'language': 'ar', 'name': 'Arabic'},
+            ]
 

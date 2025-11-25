@@ -1,3 +1,4 @@
+import { useNavigate } from "react-router-dom";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -11,13 +12,15 @@ import {
   LogOut,
   User,
   FileText,
-  Target
+  Target,
+  Bot
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const StudentSidebar = () => {
   const { user, signOut } = useAuth();
+  const navigate = useNavigate();
 
   const getInitials = (name: string) => {
     return name
@@ -57,6 +60,14 @@ const StudentSidebar = () => {
           >
             <LayoutDashboard className="h-5 w-5" />
             <span className="text-sm font-medium">Dashboard</span>
+          </NavLink>
+          <NavLink
+            to="/dashboard/student/chat"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-accent transition-colors"
+            activeClassName="bg-primary/20 text-primary hover:bg-primary/30"
+          >
+            <Bot className="h-5 w-5" />
+            <span className="text-sm font-medium">AI Chat</span>
           </NavLink>
           <NavLink
             to="/dashboard/student/classroom"
@@ -154,7 +165,9 @@ const StudentSidebar = () => {
           <HelpCircle className="h-10 w-10 text-primary mx-auto mb-2" />
           <h3 className="font-semibold mb-1">Need Help?</h3>
           <p className="text-sm text-muted-foreground mb-3">Our AI Tutor is here 24/7</p>
-          <Button size="sm" className="w-full">Start Chat</Button>
+          <Button size="sm" className="w-full" onClick={() => navigate('/dashboard/student/chat')}>
+            Start Chat
+          </Button>
         </div>
         <Button
           variant="outline"

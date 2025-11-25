@@ -17,7 +17,14 @@ class WellbeingService:
     
     def __init__(self, supabase_client: Client):
         self.supabase = supabase_client
-        self.model = genai.GenerativeModel('gemini-pro')
+        # Use gemini-2.5-flash (fast and available) or fallback to gemini-pro-latest
+        try:
+            self.model = genai.GenerativeModel('gemini-2.5-flash')
+        except:
+            try:
+                self.model = genai.GenerativeModel('gemini-pro-latest')
+            except:
+                self.model = genai.GenerativeModel('gemini-pro')
     
     async def start_focus_session(
         self,

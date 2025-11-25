@@ -167,3 +167,4 @@ async def update_distraction_guard_settings(user_id: str, settings: dict):
             detail=f"Failed to update settings: {str(e)}"
         )
 
+
