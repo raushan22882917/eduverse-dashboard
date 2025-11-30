@@ -147,3 +147,4 @@ VITE_API_BASE_URL=https://api.yourdomain.com/api
 - All deployment configuration files are ready to use
 - Make sure your backend API is also deployed and accessible from your frontend domain
 
+

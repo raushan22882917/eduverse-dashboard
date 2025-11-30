@@ -110,3 +110,4 @@ If creating mockups for future features:
 - Demonstrate the RAG-powered content retrieval
 - Include examples of adaptive learning features
 
+

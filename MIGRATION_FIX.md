@@ -78,3 +78,4 @@ If you continue to see errors:
 2. Verify your Supabase project URL and keys are correct in Vercel environment variables
 3. Ensure all migrations have been applied (check the migrations list in Supabase)
 
+
