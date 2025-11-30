@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { TrendingUp, TrendingDown, Calendar, Award, Target, Loader2, Eye } from "lucide-react";
+import { TrendingUp, TrendingDown, Calendar, Award, Target, Loader2, Eye, FileText } from "lucide-react";
 import { api } from "@/lib/api";
 import { PerformanceTrend, Subject } from "@/types/exam";
 import { useToast } from "@/hooks/use-toast";
@@ -92,10 +92,21 @@ const ExamHistory = () => {
         <div className="max-w-7xl mx-auto">
           {/* Header */}
           <div className="mb-8">
-            <h1 className="text-3xl font-bold mb-2">Exam History</h1>
-            <p className="text-muted-foreground">
-              Track your performance and progress over time
-            </p>
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <h1 className="text-3xl font-bold mb-2">Exam History</h1>
+                <p className="text-muted-foreground">
+                  Track your performance and progress over time
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => navigate("/dashboard/student/exam/attempts")}
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                View All Attempts Table
+              </Button>
+            </div>
           </div>
 
           {/* Filter */}

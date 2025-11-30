@@ -283,7 +283,10 @@ const Microplan = () => {
                           <Button variant="ghost" size="sm">View Answer</Button>
                         </div>
                       ))}
-                      <Button className="w-full mt-4">
+                      <Button 
+                        className="w-full mt-4"
+                        onClick={() => navigate(`/dashboard/student/quiz/start/${microplan.id}`)}
+                      >
                         Start Quiz
                       </Button>
                     </div>

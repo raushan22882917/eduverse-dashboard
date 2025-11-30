@@ -36,19 +36,40 @@ const Login = () => {
 
       if (data.user) {
         // Get user role and navigate to appropriate dashboard
-        const { data: roleData } = await supabase
-          .from("user_roles")
-          .select("role")
-          .eq("user_id", data.user.id)
-          .maybeSingle();
+        try {
+          const { data: roleData, error: roleError } = await supabase
+            .from("user_roles")
+            .select("role")
+            .eq("user_id", data.user.id)
+            .maybeSingle();
 
-        if (roleData) {
-          // Navigate to the appropriate dashboard based on role
-          navigate(`/dashboard/${roleData.role}`);
-        } else {
-          // Default to student dashboard if no role found
-          navigate("/dashboard/student");
+          if (roleError) {
+            // If maybeSingle() fails with 406, try alternative approach
+            if (roleError.code === 'PGRST116' || roleError.message?.includes('406')) {
+              const { data: rolesArray } = await supabase
+                .from("user_roles")
+                .select("role")
+                .eq("user_id", data.user.id)
+                .limit(1);
+              
+              if (rolesArray && rolesArray.length > 0) {
+                navigate(`/dashboard/${rolesArray[0].role}`);
+                return;
+              }
+            } else {
+              console.error("Error fetching user role:", roleError);
+            }
+          } else if (roleData) {
+            // Navigate to the appropriate dashboard based on role
+            navigate(`/dashboard/${roleData.role}`);
+            return;
+          }
+        } catch (err) {
+          console.error("Error fetching user role:", err);
         }
+        
+        // Default to student dashboard if no role found or error occurred
+        navigate("/dashboard/student");
       }
     } catch (error: any) {
       toast({

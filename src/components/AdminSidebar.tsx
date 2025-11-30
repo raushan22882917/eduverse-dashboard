@@ -8,7 +8,9 @@ import {
   GraduationCap,
   User,
   LogOut,
-  FileText
+  FileText,
+  Building2,
+  Bell
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -64,6 +66,14 @@ const AdminSidebar = () => {
             <span className="text-sm font-medium">User Management</span>
           </NavLink>
           <NavLink
+            to="/dashboard/admin/schools"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-accent transition-colors"
+            activeClassName="bg-primary/20 text-primary hover:bg-primary/30"
+          >
+            <Building2 className="h-5 w-5" />
+            <span className="text-sm font-medium">School Management</span>
+          </NavLink>
+          <NavLink
             to="/dashboard/admin/analytics"
             className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-accent transition-colors"
             activeClassName="bg-primary/20 text-primary hover:bg-primary/30"
@@ -78,6 +88,22 @@ const AdminSidebar = () => {
           >
             <FileText className="h-5 w-5" />
             <span className="text-sm font-medium">Content Management</span>
+          </NavLink>
+          <NavLink
+            to="/dashboard/admin/content/manage"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-accent transition-colors ml-4"
+            activeClassName="bg-primary/20 text-primary hover:bg-primary/30"
+          >
+            <FileText className="h-4 w-4" />
+            <span className="text-sm font-medium">Manage All Content</span>
+          </NavLink>
+          <NavLink
+            to="/dashboard/admin/notifications/create"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-accent transition-colors"
+            activeClassName="bg-primary/20 text-primary hover:bg-primary/30"
+          >
+            <Bell className="h-5 w-5" />
+            <span className="text-sm font-medium">Send Notifications</span>
           </NavLink>
           <NavLink
             to="/profile-setup"

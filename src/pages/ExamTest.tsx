@@ -10,6 +10,7 @@ import { Clock, AlertCircle, Loader2, CheckCircle2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { ExamSet, TestSession } from "@/types/exam";
 import { useToast } from "@/hooks/use-toast";
+import { useExamSecurity } from "@/hooks/use-exam-security";
 
 const ExamTest = () => {
   const { examSetId } = useParams<{ examSetId: string }>();
@@ -25,7 +26,55 @@ const ExamTest = () => {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [showSubmitDialog, setShowSubmitDialog] = useState(false);
+  const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [autoSubmitting, setAutoSubmitting] = useState(false);
+  const [fullscreenWarningCountdown, setFullscreenWarningCountdown] = useState<number | null>(null);
+  const [questionsHidden, setQuestionsHidden] = useState(false);
+
+  // Enable exam security (disable when test is completed)
+  const { violations, totalViolations, isFullscreen } = useExamSecurity(
+    (violation) => {
+      // Log violations to backend (optional)
+      console.warn("Security violation detected:", violation);
+      
+      // If fullscreen violation, start countdown
+      if (violation.type === "fullscreen") {
+        setQuestionsHidden(true);
+        setFullscreenWarningCountdown(10);
+      }
+    },
+    !session?.is_completed // Disable security when test is completed
+  );
+
+  // Handle fullscreen violation countdown
+  useEffect(() => {
+    if (fullscreenWarningCountdown === null) return;
+
+    // If user returns to fullscreen, cancel countdown
+    if (isFullscreen && fullscreenWarningCountdown > 0) {
+      setFullscreenWarningCountdown(null);
+      setQuestionsHidden(false);
+      toast({
+        title: "Fullscreen Restored",
+        description: "You have returned to fullscreen mode. You can continue the exam.",
+      });
+      return;
+    }
+
+    // If countdown reaches 0, auto-submit
+    if (fullscreenWarningCountdown === 0) {
+      setFullscreenWarningCountdown(null);
+      handleSubmit(true); // Auto-submit
+      return;
+    }
+
+    // Decrease countdown every second
+    const timer = setTimeout(() => {
+      setFullscreenWarningCountdown(prev => prev !== null ? prev - 1 : null);
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [fullscreenWarningCountdown, isFullscreen]);
 
   useEffect(() => {
     if (!user || !examSetId) {
@@ -80,9 +129,21 @@ const ExamTest = () => {
       setTimeRemaining(duration);
       
     } catch (error: any) {
+      let errorMessage = error.message || "Failed to start exam";
+      let errorTitle = "Error";
+      
+      // Handle specific error codes
+      if (error.status === 403 || error.data?.code === "EXAM_ALREADY_COMPLETED") {
+        errorTitle = "Exam Already Completed";
+        errorMessage = "You have already completed this exam. You cannot attempt it again.";
+      } else if (error.status === 409 || error.data?.code === "EXAM_IN_PROGRESS") {
+        errorTitle = "Exam In Progress";
+        errorMessage = "You have an incomplete exam session. Please complete or submit your current attempt before starting a new one.";
+      }
+      
       toast({
-        title: "Error",
-        description: error.message || "Failed to start exam",
+        title: errorTitle,
+        description: errorMessage,
         variant: "destructive",
       });
       navigate("/dashboard/student/exams");
@@ -144,25 +205,32 @@ const ExamTest = () => {
       }
       
       // Submit test
-      await api.exam.submitTest({
+      const submittedSession = await api.exam.submitTest({
         session_id: session.id,
         user_id: user.id,
       });
       
-      if (autoSubmit) {
-        toast({
-          title: "Time's up!",
-          description: "Your exam has been automatically submitted",
-        });
-      } else {
-        toast({
-          title: "Exam submitted",
-          description: "Your answers have been submitted for evaluation",
-        });
+      // Update session state to mark as completed
+      setSession({ ...session, ...submittedSession, is_completed: true });
+      
+      // Exit fullscreen
+      try {
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+        } else if ((document as any).webkitExitFullscreen) {
+          await (document as any).webkitExitFullscreen();
+        } else if ((document as any).mozCancelFullScreen) {
+          await (document as any).mozCancelFullScreen();
+        } else if ((document as any).msExitFullscreen) {
+          await (document as any).msExitFullscreen();
+        }
+      } catch (error) {
+        console.warn("Failed to exit fullscreen:", error);
       }
       
-      // Navigate to results
-      navigate(`/dashboard/student/exam/results/${session.id}`);
+      // Show success dialog
+      setShowSuccessDialog(true);
+      setShowSubmitDialog(false);
       
     } catch (error: any) {
       toast({
@@ -170,6 +238,7 @@ const ExamTest = () => {
         description: error.message || "Failed to submit exam",
         variant: "destructive",
       });
+      setShowSuccessDialog(false);
     } finally {
       setSubmitting(false);
       setShowSubmitDialog(false);
@@ -236,6 +305,15 @@ const ExamTest = () => {
                 </span>
               </div>
               
+              {totalViolations > 0 && (
+                <div className="flex items-center gap-2 text-red-500">
+                  <AlertCircle className="h-5 w-5" />
+                  <span className="text-sm font-medium">
+                    Violations: {totalViolations}
+                  </span>
+                </div>
+              )}
+              
               <div className={`flex items-center gap-2 ${getTimeColor()}`}>
                 <Clock className="h-5 w-5" />
                 <span className="text-lg font-bold font-mono">
@@ -264,7 +342,41 @@ const ExamTest = () => {
         </div>
       </div>
 
+      {/* Fullscreen Violation Warning */}
+      {questionsHidden && fullscreenWarningCountdown !== null && (
+        <div className="fixed inset-0 z-50 bg-background flex items-center justify-center">
+          <Card className="max-w-md mx-4">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-red-500">
+                <AlertCircle className="h-6 w-6" />
+                Fullscreen Mode Required
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                You have exited fullscreen mode. Please return to fullscreen immediately to continue the exam.
+              </p>
+              
+              <div className="flex items-center justify-center gap-2">
+                <Clock className="h-8 w-8 text-red-500 animate-pulse" />
+                <span className="text-4xl font-bold text-red-500 font-mono">
+                  {fullscreenWarningCountdown}
+                </span>
+                <span className="text-lg text-muted-foreground">seconds</span>
+              </div>
+              
+              <p className="text-sm text-center text-muted-foreground">
+                {fullscreenWarningCountdown > 0 
+                  ? `Exam will be automatically submitted in ${fullscreenWarningCountdown} second${fullscreenWarningCountdown !== 1 ? 's' : ''} if you don't return to fullscreen.`
+                  : "Submitting exam..."}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {/* Question Content */}
+      {!questionsHidden && (
       <div className="max-w-5xl mx-auto px-6 py-8">
         <Card>
           <CardHeader>
@@ -287,6 +399,22 @@ const ExamTest = () => {
               <Textarea
                 value={answers[currentQuestion.id] || ""}
                 onChange={(e) => handleAnswerChange(currentQuestion.id, e.target.value)}
+                onCopy={(e) => {
+                  e.preventDefault();
+                  toast({
+                    variant: "destructive",
+                    title: "Security Warning",
+                    description: "Copying is disabled during the exam.",
+                  });
+                }}
+                onPaste={(e) => {
+                  e.preventDefault();
+                  toast({
+                    variant: "destructive",
+                    title: "Security Warning",
+                    description: "Pasting is disabled during the exam.",
+                  });
+                }}
                 placeholder="Type your answer here..."
                 className="min-h-[200px] resize-none"
               />
@@ -349,6 +477,36 @@ const ExamTest = () => {
           </Button>
         </div>
       </div>
+      )}
+
+      {/* Submit Confirmation Dialog */}
+      {/* Success Dialog */}
+      <AlertDialog open={showSuccessDialog} onOpenChange={() => {}}>
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-green-500" />
+              {autoSubmitting ? "Time's Up!" : "Exam Submitted Successfully"}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="pt-2">
+              {autoSubmitting 
+                ? "Your exam has been automatically submitted. Your answers have been saved and will be evaluated."
+                : "Your exam has been submitted successfully. Your answers have been saved and will be evaluated. You can view your results now."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction 
+              onClick={() => {
+                setShowSuccessDialog(false);
+                navigate(`/dashboard/student/exam/results/${session.id}`);
+              }}
+              className="w-full"
+            >
+              View Results
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Submit Confirmation Dialog */}
       <AlertDialog open={showSubmitDialog} onOpenChange={setShowSubmitDialog}>

@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/lib/api";
 import { 
   BookOpen, 
   FileText,
@@ -17,7 +18,11 @@ import {
   Calendar,
   Tag,
   Loader2,
-  Eye
+  Eye,
+  Folder,
+  FolderOpen,
+  ChevronRight,
+  ChevronDown
 } from "lucide-react";
 
 const ContentLibrary = () => {
@@ -25,10 +30,14 @@ const ContentLibrary = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [content, setContent] = useState<any[]>([]);
+  const [folders, setFolders] = useState<any[]>([]);
   const [loadingContent, setLoadingContent] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedSubject, setSelectedSubject] = useState<string>("all");
   const [selectedType, setSelectedType] = useState<string>("all");
+  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<"list" | "hierarchy">("hierarchy");
 
   useEffect(() => {
     if (!loading && !user) {
@@ -39,36 +48,62 @@ const ContentLibrary = () => {
   useEffect(() => {
     if (user) {
       fetchContent();
+      fetchFolders();
     }
-  }, [user, selectedSubject, selectedType]);
+  }, [user, selectedSubject, selectedType, selectedFolder]);
+
+  const fetchFolders = async () => {
+    if (!user) return;
+    
+    try {
+      const foldersData = await api.admin.getContentFolders({
+        subject: selectedSubject !== "all" ? selectedSubject : undefined,
+      });
+      setFolders(foldersData || []);
+    } catch (error: any) {
+      console.error("Error fetching folders:", error);
+    }
+  };
 
   const fetchContent = async () => {
     if (!user) return;
     
     setLoadingContent(true);
     try {
-      let query = supabase
-        .from("content")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(50);
+      // Use new hierarchical API if folder is selected
+      if (selectedFolder) {
+        const folderData = folders.find(f => f.id === selectedFolder);
+        const result = await api.admin.getContentByFolder({
+          folder_path: folderData?.folder_path,
+          subject: selectedSubject !== "all" ? selectedSubject : undefined,
+          limit: 50,
+        });
+        setContent(result.content || []);
+      } else {
+        // Fallback to direct query
+        let query = supabase
+          .from("content")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .limit(50);
 
-      // Apply filters
-      if (selectedSubject !== "all") {
-        query = query.eq("subject", selectedSubject);
+        // Apply filters
+        if (selectedSubject !== "all") {
+          query = query.eq("subject", selectedSubject);
+        }
+
+        if (selectedType !== "all") {
+          query = query.eq("type", selectedType);
+        }
+
+        const { data, error } = await query;
+
+        if (error) {
+          throw error;
+        }
+
+        setContent(data || []);
       }
-
-      if (selectedType !== "all") {
-        query = query.eq("type", selectedType);
-      }
-
-      const { data, error } = await query;
-
-      if (error) {
-        throw error;
-      }
-
-      setContent(data || []);
     } catch (error: any) {
       console.error("Error fetching content:", error);
       toast({
@@ -79,6 +114,16 @@ const ContentLibrary = () => {
     } finally {
       setLoadingContent(false);
     }
+  };
+
+  const toggleFolder = (folderId: string) => {
+    const newExpanded = new Set(expandedFolders);
+    if (newExpanded.has(folderId)) {
+      newExpanded.delete(folderId);
+    } else {
+      newExpanded.add(folderId);
+    }
+    setExpandedFolders(newExpanded);
   };
 
   const filteredContent = content.filter((item) => {
@@ -154,10 +199,30 @@ const ContentLibrary = () => {
           {/* Filters */}
           <Card className="mb-6">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Filter className="h-5 w-5" />
-                Filters
-              </CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <Filter className="h-5 w-5" />
+                  Filters
+                </CardTitle>
+                <div className="flex gap-2">
+                  <Button
+                    variant={viewMode === "hierarchy" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setViewMode("hierarchy")}
+                  >
+                    <Folder className="h-4 w-4 mr-2" />
+                    Hierarchy
+                  </Button>
+                  <Button
+                    variant={viewMode === "list" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setViewMode("list")}
+                  >
+                    <FileText className="h-4 w-4 mr-2" />
+                    List
+                  </Button>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -199,6 +264,47 @@ const ContentLibrary = () => {
             </CardContent>
           </Card>
 
+          {/* Folder Hierarchy View */}
+          {viewMode === "hierarchy" && folders.length > 0 && (
+            <Card className="mb-6">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FolderOpen className="h-5 w-5" />
+                  Content Folders
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <Button
+                    variant={selectedFolder === null ? "default" : "ghost"}
+                    className="w-full justify-start"
+                    onClick={() => setSelectedFolder(null)}
+                  >
+                    <BookOpen className="h-4 w-4 mr-2" />
+                    All Content
+                  </Button>
+                  {folders.map((folder) => (
+                    <div key={folder.id} className="pl-4">
+                      <Button
+                        variant={selectedFolder === folder.id ? "default" : "ghost"}
+                        className="w-full justify-start"
+                        onClick={() => setSelectedFolder(folder.id)}
+                      >
+                        <Folder className="h-4 w-4 mr-2" />
+                        {folder.name}
+                        {folder.class_grade && (
+                          <Badge variant="outline" className="ml-2">
+                            Class {folder.class_grade}
+                          </Badge>
+                        )}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Content Grid */}
           {filteredContent.length === 0 ? (
             <Card>
@@ -236,6 +342,20 @@ const ContentLibrary = () => {
                         <>
                           <span>•</span>
                           <span>{item.chapter}</span>
+                        </>
+                      )}
+                      {item.class_grade && (
+                        <>
+                          <span>•</span>
+                          <span>Class {item.class_grade}</span>
+                        </>
+                      )}
+                      {item.folder_path && (
+                        <>
+                          <span>•</span>
+                          <span className="text-xs text-muted-foreground truncate max-w-[100px]">
+                            {item.folder_path.split('/').pop()}
+                          </span>
                         </>
                       )}
                     </CardDescription>

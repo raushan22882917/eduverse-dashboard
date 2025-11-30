@@ -57,6 +57,10 @@ All colors MUST be HSL.
 
     --sidebar-ring: 20 90% 48%;
 
+    --sidebar-width: 16rem;
+    --sidebar-width-icon: 3rem;
+    --sidebar-width-mobile: 18rem;
+
     --chart-1: 27 95% 60%;
 
     --chart-2: 43 96% 56%;
@@ -132,6 +136,9 @@ All colors MUST be HSL.
     --sidebar-accent-foreground: 20 91% 14%;
     --sidebar-border: 0 0% 32%;
     --sidebar-ring: 27 95% 60%;
+    --sidebar-width: 16rem;
+    --sidebar-width-icon: 3rem;
+    --sidebar-width-mobile: 18rem;
     --chart-1: 30 97% 72%;
     --chart-2: 45 96% 64%;
     --chart-3: 48 96% 76%;

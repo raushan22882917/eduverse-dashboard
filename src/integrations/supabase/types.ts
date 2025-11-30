@@ -104,6 +104,87 @@ export type Database = {
         }
         Relationships: []
       }
+      topics: {
+        Row: {
+          id: string
+          subject: Database["public"]["Enums"]["subject_type"]
+          chapter: string
+          name: string
+          order_index: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          subject: Database["public"]["Enums"]["subject_type"]
+          chapter: string
+          name: string
+          order_index: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          subject?: Database["public"]["Enums"]["subject_type"]
+          chapter?: string
+          name?: string
+          order_index?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      content: {
+        Row: {
+          id: string
+          type: Database["public"]["Enums"]["content_type"]
+          subject: Database["public"]["Enums"]["subject_type"]
+          chapter: string | null
+          topic_id: string | null
+          difficulty: Database["public"]["Enums"]["difficulty_level"] | null
+          title: string | null
+          content_text: string
+          metadata: Json
+          embedding_id: string | null
+          created_at: string
+          updated_at: string
+          chapter_number: number | null
+          class_grade: number | null
+        }
+        Insert: {
+          id?: string
+          type: Database["public"]["Enums"]["content_type"]
+          subject: Database["public"]["Enums"]["subject_type"]
+          chapter?: string | null
+          topic_id?: string | null
+          difficulty?: Database["public"]["Enums"]["difficulty_level"] | null
+          title?: string | null
+          content_text: string
+          metadata?: Json
+          embedding_id?: string | null
+          created_at?: string
+          updated_at?: string
+          chapter_number?: number | null
+          class_grade?: number | null
+        }
+        Update: {
+          id?: string
+          type?: Database["public"]["Enums"]["content_type"]
+          subject?: Database["public"]["Enums"]["subject_type"]
+          chapter?: string | null
+          topic_id?: string | null
+          difficulty?: Database["public"]["Enums"]["difficulty_level"] | null
+          title?: string | null
+          content_text?: string
+          metadata?: Json
+          embedding_id?: string | null
+          created_at?: string
+          updated_at?: string
+          chapter_number?: number | null
+          class_grade?: number | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -119,6 +200,9 @@ export type Database = {
     }
     Enums: {
       app_role: "student" | "teacher" | "admin"
+      subject_type: "mathematics" | "physics" | "chemistry" | "biology"
+      content_type: "ncert" | "pyq" | "hots" | "video"
+      difficulty_level: "easy" | "medium" | "hard"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -247,6 +331,9 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["student", "teacher", "admin"],
+      subject_type: ["mathematics", "physics", "chemistry", "biology"],
+      content_type: ["ncert", "pyq", "hots", "video"],
+      difficulty_level: ["easy", "medium", "hard"],
     },
   },
 } as const

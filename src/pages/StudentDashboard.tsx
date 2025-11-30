@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import StudentSidebar from "@/components/StudentSidebar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowRight, CheckCircle2, Clock, TrendingUp, Calculator, Microscope, BookOpen, Target, FlaskConical } from "lucide-react";
+import { ArrowRight, CheckCircle2, Clock, TrendingUp, Calculator, Microscope, BookOpen, Target, FlaskConical, FileText, Award, ChevronDown, ChevronUp, Activity } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
@@ -26,6 +26,10 @@ const StudentDashboard = () => {
   const [progressSummary, setProgressSummary] = useState<any>(null);
   const [loadingData, setLoadingData] = useState(true);
   const [recommendedTopics, setRecommendedTopics] = useState<any[]>([]);
+  const [achievements, setAchievements] = useState<any[]>([]);
+  const [recentExams, setRecentExams] = useState<any[]>([]);
+  const [subjectAnalytics, setSubjectAnalytics] = useState<Record<string, any>>({});
+  const [expandedSubjects, setExpandedSubjects] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!loading && !user) {
@@ -45,10 +49,29 @@ const StudentDashboard = () => {
           .from("student_profiles")
           .select("class_grade, school_name")
           .eq("user_id", user.id)
-          .single();
+          .maybeSingle();
 
-        if (profileError && profileError.code !== "PGRST116") {
+        if (profileError) {
           console.error("Error fetching student profile:", profileError);
+          // If it's a 406 error, try without .single() or .maybeSingle()
+          if (profileError.code === 'PGRST406' || profileError.message?.includes('406')) {
+            // Fallback: try a different query format
+            const { data: fallbackData } = await supabase
+              .from("student_profiles")
+              .select("class_grade, school_name")
+              .eq("user_id", user.id)
+              .limit(1);
+            
+            if (fallbackData && fallbackData.length > 0) {
+              const profile = fallbackData[0];
+              setStudentData(prev => ({
+                ...prev,
+                grade: profile.class_grade,
+                schoolName: profile.school_name || ""
+              }));
+            }
+            return;
+          }
         }
 
         if (studentProfile) {
@@ -70,14 +93,26 @@ const StudentDashboard = () => {
             const avgScore = summary.average_mastery || summary.avg_mastery_score || 0;
             const totalTime = summary.total_time_minutes || 0;
             
+            // Format time: show hours and minutes
+            let timeDisplay = "0h";
+            if (totalTime > 0) {
+              const hours = Math.floor(totalTime / 60);
+              const minutes = totalTime % 60;
+              if (hours > 0) {
+                timeDisplay = minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+              } else {
+                timeDisplay = `${minutes}m`;
+              }
+            }
+            
             setStudentData(prev => ({
               ...prev,
               lessonsCompleted: totalLessons,
-              timeSpent: `${Math.round(totalTime / 60)}h`,
+              timeSpent: timeDisplay,
               overallScore: Math.round(avgScore),
             }));
 
-            // Calculate subject-specific progress
+            // Calculate subject-specific progress and store detailed analytics
             const breakdown = summary.subject_breakdown || summary.subjects || {};
             if (breakdown) {
               const mathProgress = breakdown.mathematics?.average_mastery || breakdown.mathematics?.avg_mastery_score || 0;
@@ -90,6 +125,27 @@ const StudentDashboard = () => {
                 mathProgress: Math.round(mathProgress),
                 scienceProgress: Math.round(scienceProgress),
               }));
+
+              // Store detailed subject analytics
+              const analytics: Record<string, any> = {};
+              const subjects = ['mathematics', 'physics', 'chemistry', 'biology'];
+              
+              subjects.forEach((subject) => {
+                const subjectData = breakdown[subject];
+                if (subjectData) {
+                  analytics[subject] = {
+                    averageMastery: Math.round(subjectData.average_mastery || subjectData.avg_mastery_score || 0),
+                    topicsAttempted: subjectData.topics_attempted || subjectData.total_topics || 0,
+                    totalTopics: subjectData.total_topics || 0,
+                    totalTimeMinutes: subjectData.total_time_minutes || 0,
+                    questionsAttempted: subjectData.total_questions || subjectData.questions_attempted || 0,
+                    correctAnswers: subjectData.correct_answers || 0,
+                    completionRate: subjectData.completion_rate || 0,
+                  };
+                }
+              });
+              
+              setSubjectAnalytics(analytics);
             }
           }
         } catch (error: any) {
@@ -103,6 +159,58 @@ const StudentDashboard = () => {
           setTodayMicroplan(microplan);
         } catch (error) {
           console.error("Error fetching microplan:", error);
+        }
+
+        // Fetch detailed progress for each subject
+        try {
+          const subjects = ['mathematics', 'physics', 'chemistry', 'biology'];
+          const subjectProgressData = await Promise.all(
+            subjects.map(async (subject) => {
+              try {
+                const progressData = await api.progress.getUserProgress({
+                  user_id: user.id,
+                  subject: subject as any,
+                });
+                
+                if (progressData && progressData.length > 0) {
+                  const totalQuestions = progressData.reduce((sum: number, p: any) => sum + (p.questions_attempted || 0), 0);
+                  const totalCorrect = progressData.reduce((sum: number, p: any) => sum + (p.correct_answers || 0), 0);
+                  const totalTime = progressData.reduce((sum: number, p: any) => sum + (p.total_time_minutes || 0), 0);
+                  
+                  return {
+                    subject,
+                    topicsCount: progressData.length,
+                    totalQuestions,
+                    totalCorrect,
+                    totalTime,
+                  };
+                }
+                return null;
+              } catch (error) {
+                console.error(`Error fetching ${subject} progress:`, error);
+                return null;
+              }
+            })
+          );
+
+          // Update subject analytics with detailed progress data
+          setSubjectAnalytics((prev: Record<string, any>) => {
+            const updated = { ...prev };
+            subjectProgressData.forEach((data) => {
+              if (data && data.subject) {
+                updated[data.subject] = {
+                  ...updated[data.subject],
+                  topicsCount: data.topicsCount,
+                  totalQuestions: data.totalQuestions,
+                  totalCorrect: data.totalCorrect,
+                  totalTime: data.totalTime,
+                };
+              }
+            });
+            return updated;
+          });
+        } catch (error) {
+          console.error("Error fetching subject progress:", error);
         }
 
         // Fetch recommended topics based on progress
@@ -141,6 +249,85 @@ const StudentDashboard = () => {
         } catch (error) {
           console.error("Error fetching recommended topics:", error);
         }
+
+        // Fetch achievements
+        try {
+          const achievementsData = await api.progress.getAchievements(user.id);
+          if (achievementsData && achievementsData.achievements) {
+            // Sort by earned_at date and take most recent 3
+            const recentAchievements = achievementsData.achievements
+              .sort((a: any, b: any) => {
+                const dateA = a.earned_at ? new Date(a.earned_at).getTime() : 0;
+                const dateB = b.earned_at ? new Date(b.earned_at).getTime() : 0;
+                return dateB - dateA;
+              })
+              .slice(0, 3);
+            setAchievements(recentAchievements);
+          }
+        } catch (error) {
+          console.error("Error fetching achievements:", error);
+        }
+
+        // Fetch recent exam history
+        try {
+          const examHistory = await api.exam.getHistory({
+            user_id: user.id,
+            limit: 5
+          });
+          if (examHistory && examHistory.test_sessions && Array.isArray(examHistory.test_sessions)) {
+            // Sort by date (most recent first) and take up to 3
+            const sortedExams = examHistory.test_sessions
+              .filter((exam: any) => exam && exam.is_completed !== false) // Only show completed exams
+              .sort((a: any, b: any) => {
+                const dateA = a.created_at || a.start_time || a.end_time || "";
+                const dateB = b.created_at || b.start_time || b.end_time || "";
+                if (!dateA && !dateB) return 0;
+                if (!dateA) return 1;
+                if (!dateB) return -1;
+                return new Date(dateB).getTime() - new Date(dateA).getTime();
+              })
+              .slice(0, 3);
+            setRecentExams(sortedExams);
+
+            // Group exams by subject for analytics
+            const examsBySubject: Record<string, any[]> = {};
+            sortedExams.forEach((exam: any) => {
+              const subject = exam.subject?.toLowerCase();
+              if (subject) {
+                if (!examsBySubject[subject]) {
+                  examsBySubject[subject] = [];
+                }
+                examsBySubject[subject].push(exam);
+              }
+            });
+
+            // Update subject analytics with exam data
+            setSubjectAnalytics((prev: Record<string, any>) => {
+              const updated = { ...prev };
+              Object.keys(examsBySubject).forEach((subject) => {
+                const exams = examsBySubject[subject];
+                const avgScore = exams.reduce((sum, e) => {
+                  const score = e.score || 0;
+                  const totalMarks = e.total_marks || 100;
+                  return sum + (totalMarks > 0 ? (score / totalMarks) * 100 : 0);
+                }, 0) / exams.length;
+
+                if (!updated[subject]) {
+                  updated[subject] = {};
+                }
+                updated[subject] = {
+                  ...updated[subject],
+                  examCount: exams.length,
+                  avgExamScore: Math.round(avgScore),
+                };
+              });
+              return updated;
+            });
+          }
+        } catch (error) {
+          console.error("Error fetching exam history:", error);
+          // Don't show error - exams are optional
+        }
       } catch (error) {
         console.error("Error fetching student data:", error);
         toast({
@@ -165,6 +352,7 @@ const StudentDashboard = () => {
       </div>
     );
   }
+
 
   const userName = user?.user_metadata?.full_name?.split(" ")[0] || "there";
 
@@ -255,27 +443,166 @@ const StudentDashboard = () => {
                 </Card>
               )}
 
-              {/* Progress Overview */}
-              <h2 className="text-xl font-bold">Progress Overview</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="flex flex-col gap-3 p-4 bg-card rounded-lg border">
-                  <div className="flex justify-between items-center">
-                    <p className="text-base font-medium">Math Progress</p>
-                    <p className="text-primary text-sm font-semibold">{studentData.mathProgress}%</p>
-                  </div>
-                  <div className="w-full bg-muted rounded-full h-2.5">
-                    <div className="bg-primary h-2.5 rounded-full" style={{ width: `${studentData.mathProgress}%` }}></div>
-                  </div>
-                </div>
-                <div className="flex flex-col gap-3 p-4 bg-card rounded-lg border">
-                  <div className="flex justify-between items-center">
-                    <p className="text-base font-medium">Science Progress</p>
-                    <p className="text-chart-1 text-sm font-semibold">{studentData.scienceProgress}%</p>
-                  </div>
-                  <div className="w-full bg-muted rounded-full h-2.5">
-                    <div className="bg-chart-1 h-2.5 rounded-full" style={{ width: `${studentData.scienceProgress}%` }}></div>
-                  </div>
-                </div>
+              {/* Subject Analysis */}
+              <h2 className="text-xl font-bold">Subject Analysis</h2>
+              <div className="space-y-4">
+                {Object.keys(subjectAnalytics).length > 0 ? (
+                  Object.entries(subjectAnalytics).map(([subject, data]: [string, any]) => {
+                    const isExpanded = expandedSubjects.has(subject);
+                    const subjectIcons: Record<string, any> = {
+                      mathematics: Calculator,
+                      physics: Microscope,
+                      chemistry: FlaskConical,
+                      biology: BookOpen,
+                    };
+                    const subjectColors: Record<string, string> = {
+                      mathematics: {
+                        bg: "bg-primary/10",
+                        text: "text-primary",
+                        border: "border-primary/20",
+                        progress: "bg-primary",
+                      },
+                      physics: {
+                        bg: "bg-chart-1/10",
+                        text: "text-chart-1",
+                        border: "border-chart-1/20",
+                        progress: "bg-chart-1",
+                      },
+                      chemistry: {
+                        bg: "bg-blue-500/10",
+                        text: "text-blue-500",
+                        border: "border-blue-500/20",
+                        progress: "bg-blue-500",
+                      },
+                      biology: {
+                        bg: "bg-green-500/10",
+                        text: "text-green-500",
+                        border: "border-green-500/20",
+                        progress: "bg-green-500",
+                      },
+                    };
+                    const Icon = subjectIcons[subject] || BookOpen;
+                    const colors = subjectColors[subject] || subjectColors.mathematics;
+                    const mastery = data.averageMastery || 0;
+                    const topicsAttempted = data.topicsAttempted || data.topicsCount || 0;
+                    const totalTopics = data.totalTopics || data.topicsCount || topicsAttempted || 0;
+                    const timeSpent = data.totalTimeMinutes || data.totalTime || 0;
+                    const questionsAttempted = data.questionsAttempted || data.totalQuestions || 0;
+                    const correctAnswers = data.correctAnswers || data.totalCorrect || 0;
+                    const accuracy = questionsAttempted > 0 ? Math.round((correctAnswers / questionsAttempted) * 100) : 0;
+                    const examCount = data.examCount || 0;
+                    const avgExamScore = data.avgExamScore || 0;
+
+                    const formatTime = (minutes: number) => {
+                      if (minutes < 60) return `${minutes}m`;
+                      const hours = Math.floor(minutes / 60);
+                      const mins = minutes % 60;
+                      return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+                    };
+
+                    return (
+                      <Card key={subject} className="overflow-hidden">
+                        <CardHeader 
+                          className="cursor-pointer hover:bg-muted/50 transition-colors"
+                          onClick={() => {
+                            const newExpanded = new Set(expandedSubjects);
+                            if (isExpanded) {
+                              newExpanded.delete(subject);
+                            } else {
+                              newExpanded.add(subject);
+                            }
+                            setExpandedSubjects(newExpanded);
+                          }}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className={`${colors.bg} ${colors.border} p-2 rounded-lg border`}>
+                                <Icon className={`h-5 w-5 ${colors.text}`} />
+                              </div>
+                              <div>
+                                <CardTitle className="capitalize text-lg">{subject}</CardTitle>
+                                <CardDescription>
+                                  {topicsAttempted} of {totalTopics} topics attempted
+                                </CardDescription>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-4">
+                              <div className="text-right">
+                                <p className={`text-2xl font-bold ${colors.text}`}>{mastery}%</p>
+                                <p className="text-xs text-muted-foreground">Mastery</p>
+                              </div>
+                              {isExpanded ? (
+                                <ChevronUp className="h-5 w-5 text-muted-foreground" />
+                              ) : (
+                                <ChevronDown className="h-5 w-5 text-muted-foreground" />
+                              )}
+                            </div>
+                          </div>
+                          <div className="mt-4 w-full bg-muted rounded-full h-2">
+                            <div 
+                              className={`${colors.progress} h-2 rounded-full transition-all`} 
+                              style={{ width: `${mastery}%` }}
+                            ></div>
+                          </div>
+                        </CardHeader>
+                        {isExpanded && (
+                          <CardContent className="pt-0">
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+                              <div className="p-3 bg-muted/50 rounded-lg">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <Activity className="h-4 w-4 text-muted-foreground" />
+                                  <p className="text-xs text-muted-foreground">Time Spent</p>
+                                </div>
+                                <p className="text-lg font-semibold">{formatTime(timeSpent)}</p>
+                              </div>
+                              <div className="p-3 bg-muted/50 rounded-lg">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <Target className="h-4 w-4 text-muted-foreground" />
+                                  <p className="text-xs text-muted-foreground">Questions</p>
+                                </div>
+                                <p className="text-lg font-semibold">{questionsAttempted}</p>
+                              </div>
+                              <div className="p-3 bg-muted/50 rounded-lg">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
+                                  <p className="text-xs text-muted-foreground">Accuracy</p>
+                                </div>
+                                <p className="text-lg font-semibold">{accuracy}%</p>
+                              </div>
+                              <div className="p-3 bg-muted/50 rounded-lg">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <FileText className="h-4 w-4 text-muted-foreground" />
+                                  <p className="text-xs text-muted-foreground">Exams</p>
+                                </div>
+                                <p className="text-lg font-semibold">
+                                  {examCount > 0 ? `${avgExamScore}% avg` : "No exams"}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="mt-4 pt-4 border-t">
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-muted-foreground">Correct Answers</span>
+                                <span className="font-semibold">{correctAnswers} / {questionsAttempted}</span>
+                              </div>
+                              {examCount > 0 && (
+                                <div className="flex items-center justify-between text-sm mt-2">
+                                  <span className="text-muted-foreground">Tests Completed</span>
+                                  <span className="font-semibold">{examCount} tests</span>
+                                </div>
+                              )}
+                            </div>
+                          </CardContent>
+                        )}
+                      </Card>
+                    );
+                  })
+                ) : (
+                  <Card>
+                    <CardContent className="py-8 text-center">
+                      <p className="text-muted-foreground">Start learning to see your subject analysis</p>
+                    </CardContent>
+                  </Card>
+                )}
               </div>
               
               {/* Student Info */}
@@ -390,47 +717,135 @@ const StudentDashboard = () => {
                   </div>
                 </>
               )}
+
+              {/* Recent Exams */}
+              {recentExams.length > 0 && (
+                <>
+                  <h2 className="text-xl font-bold pt-4">Recent Exams</h2>
+                  <div className="flex flex-col gap-3">
+                    {recentExams.map((exam: any) => {
+                      const subjectColors: Record<string, string> = {
+                        mathematics: "bg-primary/10 text-primary border-primary/20",
+                        physics: "bg-chart-1/10 text-chart-1 border-chart-1/20",
+                        chemistry: "bg-blue-500/10 text-blue-500 border-blue-500/20",
+                        biology: "bg-green-500/10 text-green-500 border-green-500/20",
+                      };
+                      const subjectColor = subjectColors[exam.subject?.toLowerCase() || ""] || "bg-muted text-muted-foreground border-muted";
+                      
+                      const score = exam.score || 0;
+                      const totalMarks = exam.total_marks || 100;
+                      const percentage = totalMarks > 0 ? Math.round((score / totalMarks) * 100) : 0;
+                      const examDate = exam.created_at || exam.start_time;
+                      
+                      return (
+                        <div
+                          key={exam.id || exam.session_id}
+                          className="flex items-center justify-between p-4 bg-card rounded-lg border hover:shadow-md transition-shadow"
+                        >
+                          <div className="flex items-center gap-4 flex-1">
+                            <div className={`${subjectColor} p-3 rounded-lg border`}>
+                              <FileText className="h-5 w-5" />
+                            </div>
+                            <div className="flex-1">
+                              <p className="font-semibold capitalize">
+                                {exam.subject || "Exam"}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                {examDate ? new Date(examDate).toLocaleDateString() : "Recently"}
+                                {percentage > 0 && ` • ${percentage}%`}
+                              </p>
+                            </div>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="gap-1"
+                            onClick={() => {
+                              if (exam.id || exam.session_id) {
+                                navigate(`/dashboard/student/exam-results/${exam.id || exam.session_id}`);
+                              } else {
+                                navigate("/dashboard/student/exams");
+                              }
+                            }}
+                          >
+                            <span>View</span>
+                            <ArrowRight className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <Button
+                    variant="outline"
+                    className="w-full mt-2"
+                    onClick={() => navigate("/dashboard/student/exams")}
+                  >
+                    View All Exams
+                    <ArrowRight className="h-4 w-4 ml-2" />
+                  </Button>
+                </>
+              )}
             </div>
 
             {/* Right Column */}
             <div className="lg:col-span-1">
               <div className="bg-card rounded-lg border p-6">
                 <h3 className="text-lg font-bold mb-4">Recent Achievements</h3>
-                <div className="space-y-4">
-                  <div className="flex items-center gap-4">
-                    <div className="text-chart-2">
-                      <svg className="h-10 w-10" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
-                      </svg>
-                    </div>
-                    <div>
-                      <p className="font-semibold">Math Whiz</p>
-                      <p className="text-sm text-muted-foreground">Completed 10 math lessons</p>
-                    </div>
+                {achievements.length > 0 ? (
+                  <div className="space-y-4">
+                    {achievements.map((achievement, index) => {
+                      const getAchievementIcon = (icon?: string) => {
+                        if (icon) return <span className="text-2xl">{icon}</span>;
+                        // Fallback icons based on achievement type
+                        if (achievement.id?.includes("mastery")) return <CheckCircle2 className="h-8 w-8 text-chart-2" />;
+                        if (achievement.id?.includes("streak")) return <Clock className="h-8 w-8 text-chart-1" />;
+                        return <Target className="h-8 w-8 text-primary" />;
+                      };
+
+                      const getAchievementColor = () => {
+                        if (achievement.id?.includes("mastery_90")) return "text-chart-2";
+                        if (achievement.id?.includes("mastery_80")) return "text-chart-1";
+                        if (achievement.id?.includes("streak_30")) return "text-primary";
+                        if (achievement.id?.includes("streak_7")) return "text-chart-1";
+                        return "text-muted-foreground";
+                      };
+
+                      return (
+                        <div key={achievement.id || index} className="flex items-center gap-4">
+                          <div className={getAchievementColor()}>
+                            {getAchievementIcon(achievement.icon)}
+                          </div>
+                          <div className="flex-1">
+                            <p className="font-semibold">{achievement.name || "Achievement"}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {achievement.description || `Earned in ${achievement.subject || "learning"}`}
+                            </p>
+                            {achievement.earned_at && (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {new Date(achievement.earned_at).toLocaleDateString()}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <Button
+                      variant="outline"
+                      className="w-full mt-4"
+                      onClick={() => navigate("/dashboard/student/achievements")}
+                    >
+                      View All Achievements
+                      <ArrowRight className="h-4 w-4 ml-2" />
+                    </Button>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <div className="text-chart-1">
-                      <svg className="h-10 w-10" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M13.13 22.19L11.5 18.36C13.07 17.78 14.54 17 15.9 16.09L13.13 22.19M5.64 12.5L1.81 10.87L7.91 8.1C7 9.46 6.22 10.93 5.64 12.5M19.22 4C19.5 4 19.75 4 19.96 4.05C20.13 5.44 19.94 8.3 16.66 11.58C14.96 13.29 12.93 14.6 10.65 15.47L8.5 13.37C9.42 11.06 10.73 9.03 12.42 7.34C15.18 4.58 17.64 4 19.22 4M19.22 2C17.24 2 14.24 2.69 11 5.93C8.81 8.12 7.5 10.53 6.65 12.64C6.37 13.39 6.56 14.21 7.11 14.77L9.24 16.89C9.62 17.27 10.13 17.5 10.66 17.5C10.89 17.5 11.13 17.44 11.36 17.35C13.5 16.53 15.88 15.19 18.07 13C23.73 7.34 21.61 2.39 21.61 2.39S20.7 2 19.22 2M14.54 9.46C13.76 8.68 13.76 7.41 14.54 6.63S16.59 5.85 17.37 6.63C18.14 7.41 18.15 8.68 17.37 9.46C16.59 10.24 15.32 10.24 14.54 9.46M8.88 16.53L7.47 15.12L8.88 16.53M6.24 22L9.88 18.36C9.54 18.27 9.21 18.12 8.91 17.91L4.83 22H6.24M2 22H3.41L8.18 17.24L6.76 15.83L2 20.59V22M2 19.17L6.09 15.09C5.88 14.79 5.73 14.47 5.64 14.12L2 17.76V19.17Z" />
-                      </svg>
-                    </div>
-                    <div>
-                      <p className="font-semibold">Science Explorer</p>
-                      <p className="text-sm text-muted-foreground">Mastered biology basics</p>
-                    </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <p className="text-muted-foreground mb-4">No achievements yet</p>
+                    <p className="text-sm text-muted-foreground">
+                      Start learning to earn your first achievement!
+                    </p>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <div className="text-primary">
-                      <svg className="h-10 w-10" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M17.66 11.2C17.43 10.9 17.15 10.64 16.89 10.38C16.22 9.78 15.46 9.35 14.82 8.72C13.33 7.26 13 4.85 13.95 3C13 3.23 12.17 3.75 11.46 4.32C8.87 6.4 7.85 10.07 9.07 13.22C9.11 13.32 9.15 13.42 9.15 13.55C9.15 13.77 9 13.97 8.8 14.05C8.57 14.15 8.33 14.09 8.14 13.93C8.08 13.88 8.04 13.83 8 13.76C6.87 12.33 6.69 10.28 7.45 8.64C5.78 10 4.87 12.3 5 14.47C5.06 14.97 5.12 15.47 5.29 15.97C5.43 16.57 5.7 17.17 6 17.7C7.08 19.43 8.95 20.67 10.96 20.92C13.1 21.19 15.39 20.8 17.03 19.32C18.86 17.66 19.5 15 18.56 12.72L18.43 12.46C18.22 12 17.66 11.2 17.66 11.2M14.5 17.5C14.22 17.74 13.76 18 13.4 18.1C12.28 18.5 11.16 17.94 10.5 17.28C11.69 17 12.4 16.12 12.61 15.23C12.78 14.43 12.46 13.77 12.33 13C12.21 12.26 12.23 11.63 12.5 10.94C12.69 11.32 12.89 11.7 13.13 12C13.9 13 15.11 13.44 15.37 14.8C15.41 14.94 15.43 15.08 15.43 15.23C15.46 16.05 15.1 16.95 14.5 17.5H14.5Z" />
-                      </svg>
-                    </div>
-                    <div>
-                      <p className="font-semibold">Perfect Week</p>
-                      <p className="text-sm text-muted-foreground">7-day learning streak</p>
-                    </div>
-                  </div>
-                </div>
+                )}
               </div>
             </div>
           </div>

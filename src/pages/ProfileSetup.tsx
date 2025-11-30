@@ -60,8 +60,27 @@ const ProfileSetup = () => {
               .select("role")
               .eq("user_id", user.id)
               .maybeSingle()
-              .then(({ data: roleData }) => {
-                if (roleData) {
+              .then(({ data: roleData, error: roleError }) => {
+                if (roleError) {
+                  // If maybeSingle() fails with 406, try alternative approach
+                  if (roleError.code === 'PGRST116' || roleError.message?.includes('406')) {
+                    supabase
+                      .from("user_roles")
+                      .select("role")
+                      .eq("user_id", user.id)
+                      .limit(1)
+                      .then(({ data: rolesArray }) => {
+                        if (rolesArray && rolesArray.length > 0) {
+                          navigate(`/dashboard/${rolesArray[0].role}`);
+                        } else {
+                          navigate("/dashboard/student");
+                        }
+                      });
+                  } else {
+                    console.error("Error fetching user role:", roleError);
+                    navigate("/dashboard/student");
+                  }
+                } else if (roleData) {
                   navigate(`/dashboard/${roleData.role}`);
                 } else {
                   navigate("/dashboard/student"); // Default to student
@@ -86,7 +105,21 @@ const ProfileSetup = () => {
         .maybeSingle()
         .then(({ data, error }) => {
           if (error) {
-            console.error("Error fetching role:", error);
+            // If maybeSingle() fails with 406, try alternative approach
+            if (error.code === 'PGRST116' || error.message?.includes('406')) {
+              supabase
+                .from("user_roles")
+                .select("role")
+                .eq("user_id", user.id)
+                .limit(1)
+                .then(({ data: rolesArray }) => {
+                  if (rolesArray && rolesArray.length > 0) {
+                    setRole(rolesArray[0].role);
+                  }
+                });
+            } else {
+              console.error("Error fetching role:", error);
+            }
           }
           if (data) {
             setRole(data.role);

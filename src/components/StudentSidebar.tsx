@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
@@ -5,7 +6,7 @@ import {
   LayoutDashboard,
   BookOpen,
   Trophy,
-  MessageSquare,
+  Bell,
   Settings,
   GraduationCap,
   HelpCircle,
@@ -13,14 +14,20 @@ import {
   User,
   FileText,
   Target,
-  Bot
+  Bot,
+  Upload,
+  Sparkles,
+  FileDown,
+  FileQuestion
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { supabase } from "@/integrations/supabase/client";
 
 const StudentSidebar = () => {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const [classGrade, setClassGrade] = useState<number | null>(null);
 
   const getInitials = (name: string) => {
     return name
@@ -29,6 +36,50 @@ const StudentSidebar = () => {
       .join("")
       .toUpperCase();
   };
+
+  useEffect(() => {
+    const fetchStudentProfile = async () => {
+      if (!user) return;
+
+      try {
+        const { data: studentProfile, error } = await supabase
+          .from("student_profiles")
+          .select("class_grade")
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (error) {
+          // Handle 406 error specifically
+          if (error.code === 'PGRST406' || error.message?.includes('406')) {
+            // Fallback: try without .maybeSingle()
+            const { data: fallbackData } = await supabase
+              .from("student_profiles")
+              .select("class_grade")
+              .eq("user_id", user.id)
+              .limit(1);
+            
+            if (fallbackData && fallbackData.length > 0 && fallbackData[0].class_grade) {
+              setClassGrade(fallbackData[0].class_grade);
+            }
+            return;
+          }
+          
+          if (error.code !== "PGRST116") {
+            console.error("Error fetching student profile:", error);
+            return;
+          }
+        }
+
+        if (studentProfile?.class_grade) {
+          setClassGrade(studentProfile.class_grade);
+        }
+      } catch (error) {
+        console.error("Error fetching student profile:", error);
+      }
+    };
+
+    fetchStudentProfile();
+  }, [user]);
 
   return (
     <aside className="w-64 flex-shrink-0 bg-card border-r flex flex-col justify-between">
@@ -47,7 +98,9 @@ const StudentSidebar = () => {
           </Avatar>
           <div className="flex flex-col">
             <h2 className="text-base font-semibold">{user?.user_metadata?.full_name || "Student"}</h2>
-            <p className="text-sm text-muted-foreground">Grade 8</p>
+            <p className="text-sm text-muted-foreground">
+              {classGrade ? `Grade ${classGrade}` : "Student"}
+            </p>
           </div>
         </div>
 
@@ -62,12 +115,12 @@ const StudentSidebar = () => {
             <span className="text-sm font-medium">Dashboard</span>
           </NavLink>
           <NavLink
-            to="/dashboard/student/chat"
+            to="/dashboard/student/ai-tutor"
             className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-accent transition-colors"
             activeClassName="bg-primary/20 text-primary hover:bg-primary/30"
           >
             <Bot className="h-5 w-5" />
-            <span className="text-sm font-medium">AI Chat</span>
+            <span className="text-sm font-medium">AI Tutor & Chat</span>
           </NavLink>
           <NavLink
             to="/dashboard/student/classroom"
@@ -86,12 +139,20 @@ const StudentSidebar = () => {
             <span className="text-sm font-medium">All Subjects</span>
           </NavLink>
           <NavLink
-            to="/dashboard/student/content"
+            to="/dashboard/student/content/downloads"
             className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-accent transition-colors"
             activeClassName="bg-primary/20 text-primary hover:bg-primary/30"
           >
-            <FileText className="h-5 w-5" />
-            <span className="text-sm font-medium">Content Library</span>
+            <FileDown className="h-5 w-5" />
+            <span className="text-sm font-medium">Download Content</span>
+          </NavLink>
+          <NavLink
+            to="/dashboard/student/upload-content"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-accent transition-colors"
+            activeClassName="bg-primary/20 text-primary hover:bg-primary/30"
+          >
+            <Sparkles className="h-5 w-5" />
+            <span className="text-sm font-medium">Practice PYQ</span>
           </NavLink>
           <NavLink
             to="/dashboard/student/exams"
@@ -101,6 +162,7 @@ const StudentSidebar = () => {
             <FileText className="h-5 w-5" />
             <span className="text-sm font-medium">Practice Exams</span>
           </NavLink>
+          
           <NavLink
             to="/dashboard/student/achievements"
             className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-accent transition-colors"
@@ -118,14 +180,6 @@ const StudentSidebar = () => {
             <span className="text-sm font-medium">Microplan</span>
           </NavLink>
           <NavLink
-            to="/dashboard/student/doubt"
-            className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-accent transition-colors"
-            activeClassName="bg-primary/20 text-primary hover:bg-primary/30"
-          >
-            <MessageSquare className="h-5 w-5" />
-            <span className="text-sm font-medium">Doubt Solver</span>
-          </NavLink>
-          <NavLink
             to="/dashboard/student/homework"
             className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-accent transition-colors"
             activeClassName="bg-primary/20 text-primary hover:bg-primary/30"
@@ -134,12 +188,12 @@ const StudentSidebar = () => {
             <span className="text-sm font-medium">Homework</span>
           </NavLink>
           <NavLink
-            to="/dashboard/student/messages"
+            to="/dashboard/student/notifications"
             className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-accent transition-colors"
             activeClassName="bg-primary/20 text-primary hover:bg-primary/30"
           >
-            <MessageSquare className="h-5 w-5" />
-            <span className="text-sm font-medium">Messages</span>
+            <Bell className="h-5 w-5" />
+            <span className="text-sm font-medium">Notifications</span>
           </NavLink>
           <NavLink
             to="/profile-setup"

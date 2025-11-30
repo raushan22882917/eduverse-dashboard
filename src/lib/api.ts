@@ -99,6 +99,29 @@ export const api = {
       fetchAPI<any>('/rag/query', {
         method: 'POST',
         body: JSON.stringify(data),
+      }).catch(async (error) => {
+        // Fallback to direct Gemini if RAG fails (500 or 503 errors)
+        if (error.status === 500 || error.status === 503) {
+          console.log("RAG query failed, falling back to direct Gemini...");
+          try {
+            return await fetchAPI<any>('/rag/query-direct', {
+              method: 'POST',
+              body: JSON.stringify(data),
+            });
+          } catch (fallbackError: any) {
+            console.error("Direct Gemini fallback also failed:", fallbackError);
+            throw fallbackError;
+          }
+        }
+        throw error;
+      }),
+    queryDirect: (data: {
+      query: string;
+      subject?: string;
+    }) =>
+      fetchAPI<any>('/rag/query-direct', {
+        method: 'POST',
+        body: JSON.stringify(data),
       }),
     embed: (data: { texts: string[]; batch_size?: number; model_name?: string }) =>
       fetchAPI<any>('/rag/embed', {
@@ -174,6 +197,19 @@ export const api = {
       
       return fetchAPI<any[]>(`/doubt/history?${queryParams}`);
     },
+    wolframChat: (params: {
+      query: string;
+      include_steps?: boolean;
+    }) => {
+      const queryParams = new URLSearchParams({ query: params.query });
+      if (params.include_steps !== undefined) {
+        queryParams.append('include_steps', params.include_steps.toString());
+      }
+      
+      return fetchAPI<any>(`/doubt/wolfram/chat?${queryParams}`, {
+        method: 'POST',
+      });
+    },
   },
 
   // Homework endpoints
@@ -182,6 +218,9 @@ export const api = {
       user_id: string;
       question: string;
       subject?: string;
+      question_id?: string;
+      correct_answer?: string;
+      metadata?: Record<string, any>;
     }) =>
       fetchAPI<any>('/homework/start', {
         method: 'POST',
@@ -205,16 +244,18 @@ export const api = {
       }),
     getSession: (sessionId: string) =>
       fetchAPI<any>(`/homework/session/${sessionId}`),
-    getSessions: (params: {
-      user_id: string;
+    getSessions: (params?: {
+      user_id?: string;
       limit?: number;
       offset?: number;
     }) => {
-      const queryParams = new URLSearchParams({ user_id: params.user_id });
-      if (params.limit) queryParams.append('limit', params.limit.toString());
-      if (params.offset) queryParams.append('offset', params.offset.toString());
+      const queryParams = new URLSearchParams();
+      if (params?.user_id) queryParams.append('user_id', params.user_id);
+      if (params?.limit) queryParams.append('limit', params.limit.toString());
+      if (params?.offset) queryParams.append('offset', params.offset.toString());
       
-      return fetchAPI<any[]>(`/homework/sessions?${queryParams}`);
+      const query = queryParams.toString();
+      return fetchAPI<any[]>(`/homework/sessions${query ? `?${query}` : ''}`);
     },
   },
 
@@ -240,6 +281,9 @@ export const api = {
     getByDate: (params: { plan_date: string; user_id: string }) => {
       const queryParams = new URLSearchParams({ user_id: params.user_id });
       return fetchAPI<any>(`/microplan/${params.plan_date}?${queryParams}`);
+    },
+    getMicroplan: (microplanId: string) => {
+      return fetchAPI<any>(`/microplan/${microplanId}`);
     },
     markComplete: (params: { microplan_id: string; user_id: string }) => {
       const queryParams = new URLSearchParams({ user_id: params.user_id });
@@ -326,6 +370,61 @@ export const api = {
     },
   },
 
+  // Quiz endpoints
+  quiz: {
+    startSession: (data: {
+      user_id: string;
+      microplan_id?: string;
+      quiz_data: any;
+      subject: string;
+      duration_minutes?: number;
+      total_marks?: number;
+    }) =>
+      fetchAPI<any>('/quiz/start', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    saveAnswer: (params: {
+      session_id: string;
+      user_id: string;
+      answer: {
+        question_id: string;
+        answer: string;
+        timestamp: string;
+      };
+    }) => {
+      const queryParams = new URLSearchParams({
+        session_id: params.session_id,
+        user_id: params.user_id,
+      });
+      
+      return fetchAPI<any>(`/quiz/answer?${queryParams}`, {
+        method: 'PUT',
+        body: JSON.stringify(params.answer),
+      });
+    },
+    submitQuiz: (params: {
+      session_id: string;
+      user_id: string;
+    }) => {
+      const queryParams = new URLSearchParams({
+        session_id: params.session_id,
+        user_id: params.user_id,
+      });
+      
+      return fetchAPI<any>(`/quiz/submit?${queryParams}`, {
+        method: 'POST',
+      });
+    },
+    getSession: (sessionId: string, userId: string) => {
+      const queryParams = new URLSearchParams({
+        user_id: userId,
+      });
+      
+      return fetchAPI<any>(`/quiz/session/${sessionId}?${queryParams}`);
+    },
+  },
+
   // Video endpoints
   videos: {
     curate: (data: {
@@ -354,6 +453,14 @@ export const api = {
       fetchAPI<any>(`/videos/${videoId}`),
     getByYoutubeId: (youtubeId: string) =>
       fetchAPI<any>(`/videos/youtube/${youtubeId}`),
+    searchYouTube: (params: {
+      query: string;
+      max_results?: number;
+    }) => {
+      const queryParams = new URLSearchParams({ query: params.query });
+      if (params.max_results) queryParams.append('max_results', params.max_results.toString());
+      return fetchAPI<any[]>(`/videos/search/youtube?${queryParams}`);
+    },
   },
 
   // HOTS endpoints
@@ -414,23 +521,40 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data),
       }),
+    getContentStatus: (content_id: string) =>
+      fetchAPI<{
+        content_id: string;
+        processing_status: string;
+        indexing_progress: number;
+        embedding_id?: string;
+        processing_started_at?: string;
+        processing_completed_at?: string;
+      }>(`/content/status/${content_id}`),
     uploadContentFile: (params: {
       file: File;
       subject: string;
+      chapter?: string;
       topic_ids?: string[];
       class_grade?: number;
+      difficulty?: string;
     }) => {
       const formData = new FormData();
       formData.append('file', params.file);
-      // Note: subject, topic_ids, and class_grade should be query parameters, not form data
+      // Note: subject, chapter, topic_ids, class_grade, and difficulty should be query parameters, not form data
       const queryParams = new URLSearchParams();
       queryParams.append('subject', params.subject);
+      if (params.chapter) {
+        queryParams.append('chapter', params.chapter);
+      }
       if (params.topic_ids && params.topic_ids.length > 0) {
         // Backend expects single topic_id, not array
         queryParams.append('topic_id', params.topic_ids[0]);
       }
       if (params.class_grade) {
         queryParams.append('class_grade', params.class_grade.toString());
+      }
+      if (params.difficulty && params.difficulty !== "none") {
+        queryParams.append('difficulty', params.difficulty);
       }
       
       const query = queryParams.toString();
@@ -442,6 +566,89 @@ export const api = {
       }),
     previewContent: (contentId: string) =>
       fetchAPI<any>(`/content/preview/${contentId}`),
+    openContent: (params: {
+      content_id: string;
+      user_id: string;
+      trigger_processing?: boolean;
+    }) => {
+      const queryParams = new URLSearchParams({
+        user_id: params.user_id,
+      });
+      if (params.trigger_processing !== undefined) {
+        queryParams.append('trigger_processing', params.trigger_processing.toString());
+      }
+      return fetchAPI<any>(`/content/open/${params.content_id}?${queryParams}`);
+    },
+    getContentFolders: (params?: {
+      class_grade?: number;
+      subject?: string;
+      parent_folder_id?: string;
+    }) => {
+      const queryParams = new URLSearchParams();
+      if (params?.class_grade) queryParams.append('class_grade', params.class_grade.toString());
+      if (params?.subject) queryParams.append('subject', params.subject);
+      if (params?.parent_folder_id) queryParams.append('parent_folder_id', params.parent_folder_id);
+      const query = queryParams.toString();
+      return fetchAPI<any[]>(`/content/folders${query ? `?${query}` : ''}`);
+    },
+    getContentByFolder: (params?: {
+      folder_path?: string;
+      class_grade?: number;
+      subject?: string;
+      limit?: number;
+      offset?: number;
+    }) => {
+      const queryParams = new URLSearchParams();
+      if (params?.folder_path) queryParams.append('folder_path', params.folder_path);
+      if (params?.class_grade) queryParams.append('class_grade', params.class_grade.toString());
+      if (params?.subject) queryParams.append('subject', params.subject);
+      if (params?.limit) queryParams.append('limit', params.limit.toString());
+      if (params?.offset) queryParams.append('offset', params.offset.toString());
+      const query = queryParams.toString();
+      return fetchAPI<any>(`/content/by-folder${query ? `?${query}` : ''}`);
+    },
+    listAllContent: (params?: {
+      subject?: string;
+      content_type?: string;
+      processing_status?: string;
+      limit?: number;
+      offset?: number;
+    }) => {
+      const queryParams = new URLSearchParams();
+      if (params?.subject) queryParams.append('subject', params.subject);
+      if (params?.content_type) queryParams.append('content_type', params.content_type);
+      if (params?.processing_status) queryParams.append('processing_status', params.processing_status);
+      if (params?.limit) queryParams.append('limit', params.limit.toString());
+      if (params?.offset) queryParams.append('offset', params.offset.toString());
+      const query = queryParams.toString();
+      return fetchAPI<any[]>(`/content/list${query ? `?${query}` : ''}`);
+    },
+    updateContent: (params: {
+      content_id: string;
+      title?: string;
+      chapter?: string;
+      difficulty?: string;
+      class_grade?: number;
+      chapter_number?: number;
+      metadata?: Record<string, any>;
+    }) => {
+      return fetchAPI<any>(`/content/${params.content_id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          title: params.title,
+          chapter: params.chapter,
+          difficulty: params.difficulty,
+          class_grade: params.class_grade,
+          chapter_number: params.chapter_number,
+          metadata: params.metadata,
+        }),
+      });
+    },
+    deleteContent: (contentId: string) => {
+      return fetchAPI<any>(`/content/${contentId}`, {
+        method: 'DELETE',
+      });
+    },
     exportStudents: (params?: {
       subject?: string;
       min_mastery?: number;
@@ -455,6 +662,104 @@ export const api = {
         method: 'GET',
       });
     },
+    // School Management
+    createSchool: (data: {
+      name: string;
+      address?: string;
+      city?: string;
+      state?: string;
+      pincode?: string;
+      phone?: string;
+      email?: string;
+      principal_name?: string;
+    }) =>
+      fetchAPI<any>('/admin/schools', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    getSchools: (params?: {
+      city?: string;
+      state?: string;
+      is_active?: boolean;
+      limit?: number;
+      offset?: number;
+    }) => {
+      const queryParams = new URLSearchParams();
+      if (params?.city) queryParams.append('city', params.city);
+      if (params?.state) queryParams.append('state', params.state);
+      if (params?.is_active !== undefined) queryParams.append('is_active', params.is_active.toString());
+      if (params?.limit) queryParams.append('limit', params.limit.toString());
+      if (params?.offset) queryParams.append('offset', params.offset.toString());
+      const query = queryParams.toString();
+      return fetchAPI<any[]>(`/admin/schools${query ? `?${query}` : ''}`);
+    },
+    getSchool: (schoolId: string) =>
+      fetchAPI<any>(`/admin/schools/${schoolId}`),
+    updateSchool: (schoolId: string, data: {
+      name?: string;
+      address?: string;
+      city?: string;
+      state?: string;
+      pincode?: string;
+      phone?: string;
+      email?: string;
+      principal_name?: string;
+      is_active?: boolean;
+    }) => {
+      // Remove undefined values
+      const cleanData = Object.fromEntries(
+        Object.entries(data).filter(([_, v]) => v !== undefined)
+      );
+      return fetchAPI<any>(`/admin/schools/${schoolId}`, {
+        method: 'PUT',
+        body: JSON.stringify(cleanData),
+      });
+    },
+    deleteSchool: (schoolId: string) =>
+      fetchAPI<any>(`/admin/schools/${schoolId}`, {
+        method: 'DELETE',
+      }),
+    assignTeacherToSchool: (schoolId: string, teacherId: string) =>
+      fetchAPI<any>(`/admin/schools/${schoolId}/teachers/${teacherId}`, {
+        method: 'POST',
+      }),
+    removeTeacherFromSchool: (schoolId: string, teacherId: string) =>
+      fetchAPI<any>(`/admin/schools/${schoolId}/teachers/${teacherId}`, {
+        method: 'DELETE',
+      }),
+    getSchoolTeachers: (schoolId: string) =>
+      fetchAPI<any[]>(`/admin/schools/${schoolId}/teachers`),
+    getSchoolStudents: (schoolId: string, params?: {
+      limit?: number;
+      offset?: number;
+    }) => {
+      const queryParams = new URLSearchParams();
+      if (params?.limit) queryParams.append('limit', params.limit.toString());
+      if (params?.offset) queryParams.append('offset', params.offset.toString());
+      const query = queryParams.toString();
+      return fetchAPI<any[]>(`/admin/schools/${schoolId}/students${query ? `?${query}` : ''}`);
+    },
+    assignStudentToSchool: (schoolId: string, studentId: string) =>
+      fetchAPI<any>(`/admin/schools/${schoolId}/students/${studentId}`, {
+        method: 'POST',
+      }),
+    getAllTeachers: () =>
+      fetchAPI<any[]>(`/admin/teachers`),
+    getAllUsers: () =>
+      fetchAPI<any[]>(`/admin/users`),
+    createUser: (data: {
+      email: string;
+      password: string;
+      full_name: string;
+      role: "student" | "teacher";
+      class_grade?: number;
+      phone?: string;
+      subject_specializations?: string[];
+    }) =>
+      fetchAPI<any>('/admin/users', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
   },
 
   // Progress endpoints
@@ -649,10 +954,92 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data),
       }),
+    // Enhanced AI Tutor - Conversational Interface
+    createSession: (data: {
+      user_id: string;
+      session_name?: string;
+      subject?: string;
+    }) =>
+      fetchAPI<any>('/ai-tutoring/sessions', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    getSessions: (params: {
+      user_id: string;
+      limit?: number;
+      offset?: number;
+    }) => {
+      const queryParams = new URLSearchParams();
+      queryParams.append('user_id', params.user_id);
+      if (params.limit) queryParams.append('limit', params.limit.toString());
+      if (params.offset) queryParams.append('offset', params.offset.toString());
+      return fetchAPI<any>(`/ai-tutoring/sessions?${queryParams.toString()}`);
+    },
+    getSessionMessages: (sessionId: string, limit?: number) => {
+      const queryParams = new URLSearchParams();
+      if (limit) queryParams.append('limit', limit.toString());
+      return fetchAPI<any>(`/ai-tutoring/sessions/${sessionId}/messages?${queryParams.toString()}`);
+    },
+    sendMessage: (data: {
+      session_id: string;
+      user_id: string;
+      content: string;
+      subject?: string;
+      message_type?: string;
+    }) =>
+      fetchAPI<any>('/ai-tutoring/sessions/message', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    generateLessonPlan: (data: {
+      user_id: string;
+      subject: string;
+      days: number;
+      hours_per_day: number;
+    }) =>
+      fetchAPI<any>('/ai-tutoring/lesson-plans/generate', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    getLessonPlans: (params: {
+      user_id: string;
+      subject?: string;
+      is_active?: boolean;
+    }) => {
+      const queryParams = new URLSearchParams();
+      queryParams.append('user_id', params.user_id);
+      if (params.subject) queryParams.append('subject', params.subject);
+      if (params.is_active !== undefined) queryParams.append('is_active', params.is_active.toString());
+      return fetchAPI<any>(`/ai-tutoring/lesson-plans?${queryParams.toString()}`);
+    },
+    // Teacher endpoints
+    getTeacherStudentSessions: (params: {
+      teacher_id: string;
+      student_id?: string;
+      limit?: number;
+    }) => {
+      const queryParams = new URLSearchParams();
+      queryParams.append('teacher_id', params.teacher_id);
+      if (params.student_id) queryParams.append('student_id', params.student_id);
+      if (params.limit) queryParams.append('limit', params.limit.toString());
+      return fetchAPI<any>(`/ai-tutoring/teacher/student-sessions?${queryParams.toString()}`);
+    },
   },
 
   // Teacher Tools endpoints
   teacher: {
+    getDashboard: (teacherId: string) => {
+      const queryParams = new URLSearchParams({ teacher_id: teacherId });
+      return fetchAPI<any>(`/teacher/dashboard?${queryParams.toString()}`);
+    },
+    getStudents: (teacherId: string) => {
+      const queryParams = new URLSearchParams({ teacher_id: teacherId });
+      return fetchAPI<any[]>(`/teacher/students?${queryParams.toString()}`);
+    },
+    getStudentPerformance: (studentId: string, teacherId: string) => {
+      const queryParams = new URLSearchParams({ teacher_id: teacherId });
+      return fetchAPI<any>(`/teacher/students/${studentId}/performance?${queryParams.toString()}`);
+    },
     generateLessonPlan: (data: {
       teacher_id: string;
       subject: string;
@@ -687,6 +1074,98 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data),
       }),
+    createQuiz: (data: {
+      teacher_id: string;
+      title: string;
+      subject: string;
+      description?: string;
+      quiz_data: any;
+      duration_minutes?: number;
+      total_marks?: number;
+      class_grade?: number;
+      topic_ids?: string[];
+      metadata?: Record<string, any>;
+    }) =>
+      fetchAPI<any>('/teacher/quizzes', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    getQuizzes: (teacherId: string) => {
+      const queryParams = new URLSearchParams({ teacher_id: teacherId });
+      return fetchAPI<any[]>(`/teacher/quizzes?${queryParams.toString()}`);
+    },
+    getQuiz: (quizId: string, teacherId: string) => {
+      const queryParams = new URLSearchParams({ teacher_id: teacherId });
+      return fetchAPI<any>(`/teacher/quizzes/${quizId}?${queryParams.toString()}`);
+    },
+    getQuizSessions: (teacherId: string) => {
+      const queryParams = new URLSearchParams({ teacher_id: teacherId });
+      return fetchAPI<any[]>(`/teacher/quiz-sessions?${queryParams.toString()}`);
+    },
+  },
+
+  // Messages endpoints
+  messages: {
+    getConversations: (userId: string) => {
+      const queryParams = new URLSearchParams({ user_id: userId });
+      return fetchAPI<any[]>(`/messages/conversations?${queryParams}`);
+    },
+    getMessages: (params: {
+      conversation_id: string;
+      user_id: string;
+      limit?: number;
+      offset?: number;
+    }) => {
+      const queryParams = new URLSearchParams({
+        conversation_id: params.conversation_id,
+        user_id: params.user_id,
+      });
+      if (params.limit) queryParams.append('limit', params.limit.toString());
+      if (params.offset) queryParams.append('offset', params.offset.toString());
+      return fetchAPI<any[]>(`/messages/conversations/${params.conversation_id}/messages?${queryParams}`);
+    },
+    createConversation: (params: {
+      participant1_id: string;
+      participant2_id: string;
+    }) =>
+      fetchAPI<any>('/messages/conversations', {
+        method: 'POST',
+        body: JSON.stringify(params),
+      }),
+    sendMessage: (data: {
+      conversation_id: string;
+      sender_id: string;
+      receiver_id: string;
+      content: string;
+      metadata?: Record<string, any>;
+    }) =>
+      fetchAPI<any>('/messages/send', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    improveMessage: (data: {
+      text: string;
+      tone?: string;
+      context?: string;
+    }) =>
+      fetchAPI<any>('/messages/improve', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    getSuggestions: (params: {
+      context: string;
+      recipient_role?: string;
+    }) =>
+      fetchAPI<string[]>('/messages/suggestions', {
+        method: 'POST',
+        body: JSON.stringify(params),
+      }),
+    markAsRead: (messageId: string, userId: string) => {
+      const queryParams = new URLSearchParams({ user_id: userId });
+      return fetchAPI<any>(`/messages/messages/${messageId}/read?${queryParams}`, {
+        method: 'PUT',
+      });
+    },
   },
 
   // Well-being & Focus endpoints
@@ -723,6 +1202,61 @@ export const api = {
       fetchAPI<any>(`/wellbeing/distraction-guard/${userId}`, {
         method: 'PUT',
         body: JSON.stringify(settings),
+      }),
+  },
+
+  // Notification endpoints
+  notifications: {
+    getAll: (params: {
+      user_id: string;
+      is_read?: boolean;
+      notification_type?: string;
+      limit?: number;
+      offset?: number;
+    }) => {
+      const queryParams = new URLSearchParams({ user_id: params.user_id });
+      if (params.is_read !== undefined) queryParams.append('is_read', params.is_read.toString());
+      if (params.notification_type) queryParams.append('notification_type', params.notification_type);
+      if (params.limit) queryParams.append('limit', params.limit.toString());
+      if (params.offset) queryParams.append('offset', params.offset.toString());
+      return fetchAPI<any>(`/notifications?${queryParams}`);
+    },
+    getTeacherNotifications: (userId: string) => {
+      const queryParams = new URLSearchParams({ user_id: userId });
+      return fetchAPI<any[]>(`/notifications/teacher?${queryParams}`);
+    },
+    getAdminNotifications: (userId: string) => {
+      const queryParams = new URLSearchParams({ user_id: userId });
+      return fetchAPI<any[]>(`/notifications/admin?${queryParams}`);
+    },
+    markAsRead: (notificationId: string, userId: string) => {
+      const queryParams = new URLSearchParams({ user_id: userId });
+      return fetchAPI<any>(`/notifications/${notificationId}/read?${queryParams}`, {
+        method: 'PUT',
+      });
+    },
+    markAllAsRead: (userId: string) => {
+      const queryParams = new URLSearchParams({ user_id: userId });
+      return fetchAPI<any>(`/notifications/read-all?${queryParams}`, {
+        method: 'PUT',
+      });
+    },
+    getUnreadCount: (userId: string) => {
+      const queryParams = new URLSearchParams({ user_id: userId });
+      return fetchAPI<any>(`/notifications/unread-count?${queryParams}`);
+    },
+    create: (data: {
+      user_id: string;
+      title: string;
+      message: string;
+      type?: string;
+      priority?: string;
+      action_url?: string;
+      created_by?: string;
+    }) =>
+      fetchAPI<any>('/notifications', {
+        method: 'POST',
+        body: JSON.stringify(data),
       }),
   },
 };

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,6 +10,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { BookOpen, FileText, Mail, Loader2 } from 'lucide-react';
+import TeacherSidebar from '@/components/TeacherSidebar';
 
 export default function TeacherToolsPage() {
   const { user } = useAuth();
@@ -31,10 +32,12 @@ export default function TeacherToolsPage() {
   const [assessCount, setAssessCount] = useState(5);
 
   // Parent message form
-  const [pmStudentId, setPmStudentId] = useState('');
+  const [pmStudentId, setPmStudentId] = useState<string>('');
   const [pmType, setPmType] = useState('progress_update');
   const [pmSubject, setPmSubject] = useState('');
   const [pmContent, setPmContent] = useState('');
+  const [students, setStudents] = useState<any[]>([]);
+  const [loadingStudents, setLoadingStudents] = useState(false);
 
   const handleGenerateLessonPlan = async () => {
     if (!lpTopic.trim()) {
@@ -105,11 +108,34 @@ export default function TeacherToolsPage() {
     }
   };
 
+  useEffect(() => {
+    const fetchStudents = async () => {
+      if (!user?.id) return;
+      
+      setLoadingStudents(true);
+      try {
+        const studentsData = await api.teacher.getStudents(user.id);
+        setStudents(studentsData || []);
+      } catch (error: any) {
+        toast({
+          title: 'Error',
+          description: error.message || 'Failed to fetch students',
+          variant: 'destructive',
+        });
+      } finally {
+        setLoadingStudents(false);
+      }
+    };
+
+    fetchStudents();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
   const handleGenerateParentMessage = async () => {
     if (!pmStudentId.trim()) {
       toast({
         title: 'Error',
-        description: 'Please enter a student ID',
+        description: 'Please select a student',
         variant: 'destructive',
       });
       return;
@@ -121,7 +147,7 @@ export default function TeacherToolsPage() {
         teacher_id: user?.id || '',
         student_id: pmStudentId,
         message_type: pmType as any,
-        subject: pmSubject || undefined,
+        subject: pmSubject && pmSubject !== "none" ? pmSubject : undefined,
         custom_content: pmContent || undefined,
       });
       setParentMessage(response);
@@ -141,13 +167,17 @@ export default function TeacherToolsPage() {
   };
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Teacher Time-Savers</h1>
-        <p className="text-muted-foreground mt-2">
-          AI-powered tools to save time on lesson planning, assessments, and parent communication
-        </p>
-      </div>
+    <div className="flex min-h-screen w-full">
+      <TeacherSidebar />
+      
+      <main className="flex-1 p-8 overflow-y-auto bg-background">
+        <div className="max-w-7xl mx-auto space-y-6">
+          <div>
+            <h1 className="text-3xl font-bold">Teacher Time-Savers</h1>
+            <p className="text-muted-foreground mt-2">
+              AI-powered tools to save time on lesson planning, assessments, and parent communication
+            </p>
+          </div>
 
       <Tabs defaultValue="lesson-plan" className="space-y-4">
         <TabsList>
@@ -330,13 +360,30 @@ export default function TeacherToolsPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <Label htmlFor="pm-student-id">Student ID</Label>
-                <Input
-                  id="pm-student-id"
-                  placeholder="Enter student ID"
-                  value={pmStudentId}
-                  onChange={(e) => setPmStudentId(e.target.value)}
-                />
+                <Label htmlFor="pm-student-id">Student</Label>
+                <Select 
+                  value={pmStudentId || undefined} 
+                  onValueChange={(value) => setPmStudentId(value || '')} 
+                  disabled={loadingStudents}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={loadingStudents ? "Loading students..." : "Select a student"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {loadingStudents ? (
+                      <div className="px-2 py-1.5 text-sm text-muted-foreground">Loading...</div>
+                    ) : students.length === 0 ? (
+                      <div className="px-2 py-1.5 text-sm text-muted-foreground">No students found</div>
+                    ) : (
+                      students.map((student) => (
+                        <SelectItem key={student.user_id} value={student.user_id}>
+                          {student.profile?.full_name || `Student ${student.user_id.slice(0, 8)}`}
+                          {student.class_grade && ` (Grade ${student.class_grade})`}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -355,12 +402,12 @@ export default function TeacherToolsPage() {
                 </div>
                 <div>
                   <Label htmlFor="pm-subject">Subject (optional)</Label>
-                  <Select value={pmSubject} onValueChange={setPmSubject}>
+                  <Select value={pmSubject || undefined} onValueChange={setPmSubject}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select subject" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">None</SelectItem>
+                      <SelectItem value="none">None</SelectItem>
                       <SelectItem value="mathematics">Mathematics</SelectItem>
                       <SelectItem value="physics">Physics</SelectItem>
                       <SelectItem value="chemistry">Chemistry</SelectItem>
@@ -423,6 +470,8 @@ export default function TeacherToolsPage() {
           )}
         </TabsContent>
       </Tabs>
+        </div>
+      </main>
     </div>
   );
 }

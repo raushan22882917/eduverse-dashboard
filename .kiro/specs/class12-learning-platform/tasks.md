@@ -44,7 +44,7 @@
     - Implement query embedding generation with Vertex AI using google-cloud-aiplatform
     - Add vector similarity search to retrieve top 5 chunks using numpy cosine similarity
     - Build prompt construction with retrieved context for Gemini using LangChain PromptTemplate
-    - Integrate Gemini API (gemini-1.5-pro) using google-generativeai library
+    - Integrate Gemini API (gemini-3-pro-preview) using google-generativeai library
     - Add source citations and confidence scoring (cosine similarity)
     - Implement fallback logic when confidence < 70%
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
