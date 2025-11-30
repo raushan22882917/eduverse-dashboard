@@ -178,7 +178,9 @@ This guide covers deploying Eduverse Dashboard to production environments.
 
 ### Supabase Migrations
 
-1. **Using Supabase CLI**
+**⚠️ IMPORTANT: Before deploying to production, ensure all migrations are applied to your Supabase database.**
+
+1. **Using Supabase CLI (Recommended)**
 
    ```bash
    # Install Supabase CLI
@@ -187,14 +189,43 @@ This guide covers deploying Eduverse Dashboard to production environments.
    # Link project
    supabase link --project-ref your-project-ref
    
-   # Push migrations
+   # Push all migrations
    supabase db push
    ```
 
 2. **Using Supabase Dashboard**
 
-   - Go to SQL Editor
-   - Run migration files from `supabase/migrations/` in order
+   - Go to your Supabase project dashboard
+   - Navigate to **SQL Editor**
+   - Run migration files from `supabase/migrations/` in chronological order:
+     - Start with the earliest dated migration
+     - Run each migration file sequentially
+     - **Important**: Make sure to run `20251206_add_saved_explanations.sql` to fix the 404 NOT_FOUND error
+
+3. **Quick Fix for 404 NOT_FOUND Error**
+
+   If you're seeing `404: NOT_FOUND` errors after deployment, it's likely because the `saved_explanations` table is missing. To fix:
+
+   ```bash
+   # Option 1: Using Supabase CLI
+   supabase db push
+   
+   # Option 2: Manual SQL
+   # Copy the contents of supabase/migrations/20251206_add_saved_explanations.sql
+   # and run it in Supabase SQL Editor
+   ```
+
+4. **Verify Migrations Applied**
+
+   Check that all tables exist:
+   ```sql
+   SELECT table_name 
+   FROM information_schema.tables 
+   WHERE table_schema = 'public' 
+   ORDER BY table_name;
+   ```
+   
+   You should see `saved_explanations` in the list.
 
 ## Environment Configuration
 

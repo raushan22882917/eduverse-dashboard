@@ -648,10 +648,10 @@ const Classroom = () => {
     setSavedExplanations(prev => [...prev, savedItem]);
     setInteractionsCount(prev => prev + 1);
     
-    // Save to database (you can create a table for this)
+    // Save to database
     try {
       const supabaseClient = supabase as any;
-      await supabaseClient.from("saved_explanations").insert({
+      const { error: insertError } = await supabaseClient.from("saved_explanations").insert({
         user_id: user.id,
         content_id: selectedContent?.id || ncertContent?.id,
         selected_text: text,
@@ -660,8 +660,22 @@ const Classroom = () => {
         subject: selectedSubject as SubjectType,
         created_at: new Date().toISOString(),
       });
-    } catch (error) {
-      console.error("Failed to save to database:", error);
+      
+      if (insertError) {
+        // Handle 404 specifically (table doesn't exist)
+        if (insertError.code === 'PGRST116' || insertError.message?.includes('NOT_FOUND') || insertError.message?.includes('404')) {
+          console.warn("saved_explanations table not found. Please run migration: supabase/migrations/20251206_add_saved_explanations.sql");
+        } else {
+          console.error("Failed to save explanation to database:", insertError);
+        }
+      }
+    } catch (error: any) {
+      // Handle 404 specifically (table doesn't exist)
+      if (error?.code === 'PGRST116' || error?.message?.includes('NOT_FOUND') || error?.message?.includes('404')) {
+        console.warn("saved_explanations table not found. Please run migration: supabase/migrations/20251206_add_saved_explanations.sql");
+      } else {
+        console.error("Failed to save to database:", error);
+      }
       // Continue anyway - saved in local state
     }
   };
