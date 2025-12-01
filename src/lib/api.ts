@@ -2,7 +2,25 @@
  * Comprehensive API client for backend services
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
+// Determine API base URL:
+// 1. Use VITE_API_BASE_URL if explicitly set
+// 2. In development (localhost), use local backend
+// 3. In production, use relative path /api (proxied through Vercel)
+const getApiBaseUrl = () => {
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL;
+  }
+  
+  // Check if we're in development (localhost)
+  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+    return 'http://localhost:8000/api';
+  }
+  
+  // Production: use relative path (proxied through Vercel)
+  return '/api';
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 export class APIError extends Error {
   constructor(
