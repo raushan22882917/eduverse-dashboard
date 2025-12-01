@@ -38,7 +38,63 @@ async function fetchAPI<T>(
       errorData = { detail: `HTTP ${response.status}: ${response.statusText}` };
     }
     // Handle both old format (detail) and new format (error.message)
-    const errorMessage = errorData.error?.message || errorData.detail || `HTTP ${response.status}: ${response.statusText}`;
+    let errorMessage = errorData.error?.message || errorData.detail || `HTTP ${response.status}: ${response.statusText}`;
+    
+    // Provide more helpful error messages for common issues
+    if (response.status === 404) {
+      errorMessage = `Endpoint not found: ${endpoint}`;
+    } else if (response.status === 500) {
+      // Check for specific backend errors
+      const detailStr = typeof errorData.detail === 'string' ? errorData.detail : JSON.stringify(errorData.detail || {});
+      const errorMsg = errorData.error?.message || errorMessage || '';
+      const fullErrorText = errorMsg + ' ' + detailStr;
+      
+      // Handle structured error responses
+      // Check for Supabase configuration errors first (configuration issues)
+      if (fullErrorText.includes('supabase_url is required') ||
+          fullErrorText.includes('supabase_url') ||
+          fullErrorText.includes('SUPABASE_URL')) {
+        errorMessage = "Backend configuration error: The backend is missing the Supabase URL environment variable (SUPABASE_URL). This is a backend configuration issue that needs to be fixed by the development team.";
+      } else if (fullErrorText.includes('Invalid API key') || 
+          fullErrorText.includes('Supabase') ||
+          fullErrorText.includes('anon') ||
+          fullErrorText.includes('service_role') ||
+          (fullErrorText.includes('API key') && fullErrorText.includes('authentication'))) {
+        errorMessage = "Backend authentication error: The backend is using an invalid Supabase API key. This is a backend configuration issue that needs to be fixed by the development team.";
+      } else if (errorData.error?.message) {
+        errorMessage = errorData.error.message;
+      } else if (fullErrorText.includes('unindent') || fullErrorText.includes('indentation') || fullErrorText.includes('IndentationError')) {
+        // Python indentation error
+        const fileMatch = fullErrorText.match(/\(([^)]+\.py),\s*line\s*(\d+)\)/);
+        if (fileMatch) {
+          errorMessage = `Backend code error: Python indentation issue in ${fileMatch[1]} at line ${fileMatch[2]}. Please contact support.`;
+        } else {
+          errorMessage = "Backend code error: Python indentation issue. Please contact support.";
+        }
+      } else if (fullErrorText.includes('f-string') || fullErrorText.includes('backslash') || fullErrorText.includes('SyntaxError')) {
+        // Python syntax error
+        const fileMatch = fullErrorText.match(/\(([^)]+\.py),\s*line\s*(\d+)\)/);
+        if (fileMatch) {
+          errorMessage = `Backend code error: Python syntax issue in ${fileMatch[1]} at line ${fileMatch[2]}. Please contact support.`;
+        } else {
+          errorMessage = "Backend code error: Python syntax issue. Please contact support.";
+        }
+      } else if (fullErrorText.includes('logging') || fullErrorText.includes('cannot access local variable')) {
+        errorMessage = "Service error: Backend configuration issue";
+      } else if (fullErrorText.includes('JSON could not be generated')) {
+        errorMessage = "Service error: Database connection issue";
+      } else {
+        errorMessage = "Service error: Internal server error";
+      }
+    } else if (response.status === 503) {
+      // Check for structured error response with retryable flag
+      if (errorData.error?.message) {
+        errorMessage = errorData.error.message;
+      } else {
+        errorMessage = "Service temporarily unavailable - please try again later";
+      }
+    }
+    
     throw new APIError(
       errorMessage,
       response.status,

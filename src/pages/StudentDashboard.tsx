@@ -186,8 +186,18 @@ const StudentDashboard = () => {
                   };
                 }
                 return null;
-              } catch (error) {
-                console.error(`Error fetching ${subject} progress:`, error);
+              } catch (error: any) {
+                // Handle errors gracefully - progress data is optional
+                if (error.status === 401 || error.status === 500) {
+                  // Backend authentication/configuration issue - don't spam console
+                  if (error.message?.includes('API key') || error.message?.includes('Invalid API key')) {
+                    console.warn(`Progress data unavailable for ${subject}: Backend authentication issue`);
+                  } else {
+                    console.warn(`Progress data unavailable for ${subject}: Backend service error`);
+                  }
+                } else {
+                  console.error(`Error fetching ${subject} progress:`, error);
+                }
                 return null;
               }
             })
@@ -264,8 +274,17 @@ const StudentDashboard = () => {
               .slice(0, 3);
             setAchievements(recentAchievements);
           }
-        } catch (error) {
-          console.error("Error fetching achievements:", error);
+        } catch (error: any) {
+          // Handle errors gracefully - achievements are optional
+          if (error.status === 404) {
+            console.warn("Achievements endpoint not found - feature may not be available yet");
+          } else if (error.status === 500) {
+            console.warn("Achievements service temporarily unavailable:", error.message);
+          } else {
+            console.error("Error fetching achievements:", error);
+          }
+          // Set empty array to prevent UI errors
+          setAchievements([]);
         }
 
         // Fetch recent exam history
@@ -324,9 +343,17 @@ const StudentDashboard = () => {
               return updated;
             });
           }
-        } catch (error) {
-          console.error("Error fetching exam history:", error);
-          // Don't show error - exams are optional
+        } catch (error: any) {
+          // Handle errors gracefully - exam history is optional
+          if (error.status === 404) {
+            console.warn("Exam history endpoint not found - feature may not be available yet");
+          } else if (error.status === 500) {
+            console.warn("Exam history service temporarily unavailable:", error.message);
+          } else {
+            console.error("Error fetching exam history:", error);
+          }
+          // Set empty array to prevent UI errors
+          setRecentExams([]);
         }
       } catch (error) {
         console.error("Error fetching student data:", error);

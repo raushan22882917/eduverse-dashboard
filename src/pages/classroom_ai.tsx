@@ -283,7 +283,61 @@ export default function EnhancedAITutorPage() {
         }
       }
     } catch (error: any) {
-      console.error('Error fetching sessions:', error);
+      // Log error details for debugging
+      console.error('Error fetching sessions:', {
+        status: error.status,
+        message: error.message,
+        data: error.data
+      });
+
+      // Handle Python syntax/indentation errors
+      if (error.status === 500) {
+        const errorData = error.data || {};
+        const errorMsg = errorData.error?.message || errorData.detail || error.message || 'Backend service error';
+        const errorStr = typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg);
+        
+        // Detect Supabase authentication errors (check first as they're configuration issues)
+        // Detect Supabase configuration errors (check first as they're configuration issues)
+        const isSupabaseConfigError = errorStr.includes('supabase_url is required') ||
+                                     errorStr.includes('supabase_url') ||
+                                     errorStr.includes('SUPABASE_URL') ||
+                                     errorStr.includes('Invalid API key') || 
+                                     errorStr.includes('Supabase') ||
+                                     errorStr.includes('anon') ||
+                                     errorStr.includes('service_role') ||
+                                     errorStr.includes('API key') ||
+                                     errorStr.includes('authentication') ||
+                                     errorStr.includes('JSON could not be generated');
+        
+        // Detect Python syntax/indentation errors
+        const isPythonSyntaxError = errorStr.includes('unindent') || 
+                                   errorStr.includes('indentation') || 
+                                   errorStr.includes('IndentationError') ||
+                                   errorStr.includes('f-string') || 
+                                   errorStr.includes('backslash') ||
+                                   errorStr.includes('SyntaxError') ||
+                                   /\([^)]+\.py,\s*line\s*\d+\)/.test(errorStr);
+        
+        // Extract file and line number if available
+        const fileMatch = errorStr.match(/\(([^)]+\.py),\s*line\s*(\d+)\)/);
+        
+        if (isSupabaseConfigError) {
+          if (errorStr.includes('supabase_url is required') || errorStr.includes('supabase_url')) {
+            console.warn('Backend configuration error: The backend is missing the Supabase URL environment variable (SUPABASE_URL). This is a backend configuration issue.');
+          } else {
+            console.warn('Backend authentication error: The backend is using an invalid Supabase API key or missing configuration. This is a backend configuration issue.');
+          }
+        } else if (isPythonSyntaxError) {
+          if (fileMatch) {
+            console.warn(`Backend code error detected in ${fileMatch[1]} (line ${fileMatch[2]}). This needs to be fixed in the backend.`);
+          } else {
+            console.warn('Backend code error detected. This needs to be fixed in the backend.');
+          }
+        }
+      }
+      
+      // Set empty sessions on error to prevent UI issues
+      setSessions([]);
     }
   };
 
@@ -302,14 +356,41 @@ export default function EnhancedAITutorPage() {
   };
 
   const createNewSession = async () => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      toast({
+        title: 'Authentication Required',
+        description: 'Please log in to create a new chat session.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    // Validate required fields
+    if (!subject || subject.trim() === '') {
+      toast({
+        title: 'Subject Required',
+        description: 'Please select a subject before creating a new chat.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     try {
       setLoading(true);
-      const response = await api.aiTutoring.createSession({
+      
+      // Prepare request payload with validation
+      const payload = {
         user_id: user.id,
         session_name: `New Chat ${new Date().toLocaleDateString()}`,
-        subject: subject
-      });
+        subject: subject.trim()
+      };
+
+      // Log request for debugging (only in development)
+      if (import.meta.env.DEV) {
+        console.log('Creating AI tutoring session:', payload);
+      }
+
+      const response = await api.aiTutoring.createSession(payload);
       
       const newSession = response.session;
       setSessions(prev => [newSession, ...prev]);
@@ -321,11 +402,96 @@ export default function EnhancedAITutorPage() {
         description: 'Start chatting with your AI tutor!'
       });
     } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to create session',
-        variant: 'destructive'
+      // Log error details for debugging
+      console.error('Failed to create AI tutoring session:', {
+        status: error.status,
+        message: error.message,
+        data: error.data
       });
+
+      // Handle errors with appropriate messaging
+      if (error.status === 503) {
+        const errorData = error.data?.error || {};
+        const errorMsg = errorData.message || error.message || 'Service temporarily unavailable';
+        toast({
+          title: 'Service Unavailable',
+          description: errorMsg || 'AI Tutoring service is temporarily unavailable. Please try again in a moment.',
+          variant: 'destructive'
+        });
+      } else if (error.status === 500) {
+        // Backend server error
+        const errorData = error.data || {};
+        const errorMsg = errorData.error?.message || errorData.detail || error.message || 'Backend service error';
+        const errorStr = typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg);
+        
+        // Detect Supabase configuration errors (check first as they're configuration issues)
+        const isSupabaseConfigError = errorStr.includes('supabase_url is required') ||
+                                     errorStr.includes('supabase_url') ||
+                                     errorStr.includes('SUPABASE_URL') ||
+                                     errorStr.includes('Invalid API key') || 
+                                     errorStr.includes('Supabase') ||
+                                     errorStr.includes('anon') ||
+                                     errorStr.includes('service_role') ||
+                                     errorStr.includes('API key') ||
+                                     errorStr.includes('authentication') ||
+                                     errorStr.includes('JSON could not be generated');
+        
+        // Detect Python syntax/indentation errors
+        const isPythonSyntaxError = errorStr.includes('unindent') || 
+                                   errorStr.includes('indentation') || 
+                                   errorStr.includes('IndentationError') ||
+                                   errorStr.includes('f-string') || 
+                                   errorStr.includes('backslash') ||
+                                   errorStr.includes('SyntaxError') ||
+                                   /\([^)]+\.py,\s*line\s*\d+\)/.test(errorStr);
+        
+        // Extract file and line number if available
+        const fileMatch = errorStr.match(/\(([^)]+\.py),\s*line\s*(\d+)\)/);
+        let userMessage = '';
+        
+        if (isSupabaseConfigError) {
+          if (errorStr.includes('supabase_url is required') || errorStr.includes('supabase_url')) {
+            userMessage = 'Backend configuration error: The backend is missing the Supabase URL environment variable (SUPABASE_URL). This is a backend configuration issue that needs to be fixed by the development team.';
+          } else {
+            userMessage = 'Backend authentication error: The backend is using an invalid Supabase API key or missing configuration. This is a backend configuration issue that needs to be fixed by the development team.';
+          }
+        } else if (isPythonSyntaxError) {
+          if (fileMatch) {
+            userMessage = `Backend code error detected in ${fileMatch[1]} (line ${fileMatch[2]}). This is a backend issue that needs to be fixed by the development team.`;
+          } else {
+            userMessage = 'Backend code error detected. This is a backend issue that needs to be fixed by the development team.';
+          }
+        } else {
+          userMessage = typeof errorMsg === 'string' ? errorMsg : 'Internal server error. Please try again later.';
+        }
+        
+        toast({
+          title: 'Service Error',
+          description: userMessage,
+          variant: 'destructive',
+          duration: 6000 // Show longer for technical errors
+        });
+      } else if (error.status === 404) {
+        toast({
+          title: 'Feature Not Available',
+          description: 'Session creation endpoint not found. Please check your connection.',
+          variant: 'default'
+        });
+      } else if (error.status === 400) {
+        const errorMsg = error.data?.error?.message || error.data?.detail || error.message || 'Invalid request';
+        toast({
+          title: 'Invalid Request',
+          description: errorMsg,
+          variant: 'destructive'
+        });
+      } else {
+        const errorMsg = error.data?.error?.message || error.message || 'Failed to create session';
+        toast({
+          title: 'Error',
+          description: errorMsg,
+          variant: 'destructive'
+        });
+      }
     } finally {
       setLoading(false);
     }

@@ -210,6 +210,9 @@ export default function EnhancedAITutorPage() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [currentSession, setCurrentSession] = useState<Session | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [sessionsEndpointAvailable, setSessionsEndpointAvailable] = useState<boolean | null>(null);
+  const [fetchingSessions, setFetchingSessions] = useState(false);
+  const [sessionCreateRetryCount, setSessionCreateRetryCount] = useState(0);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [subject, setSubject] = useState('mathematics');
@@ -245,6 +248,7 @@ export default function EnhancedAITutorPage() {
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const synthRef = useRef<SpeechSynthesis | null>(null);
+  const configErrorShownRef = useRef<boolean>(false);
 
   useEffect(() => {
     if (user?.id) {
@@ -275,8 +279,20 @@ export default function EnhancedAITutorPage() {
     }
   }, [messages]);
 
-  const fetchSessions = async () => {
+  const fetchSessions = async (force = false) => {
     if (!user?.id) return;
+    
+    // If endpoint is known to be unavailable (503), skip unless forced
+    if (sessionsEndpointAvailable === false && !force) {
+      return;
+    }
+    
+    // Prevent multiple simultaneous calls
+    if (fetchingSessions) {
+      return;
+    }
+    
+    setFetchingSessions(true);
     try {
       const response = await api.aiTutoring.getSessions({
         user_id: user.id,
@@ -287,6 +303,7 @@ export default function EnhancedAITutorPage() {
         new Date(a.last_message_at || a.created_at).getTime()
       );
       setSessions(sortedSessions);
+      setSessionsEndpointAvailable(true);
       
       if (!currentSession) {
         const activeSession = sortedSessions.find((s: Session) => s.is_active);
@@ -297,49 +314,280 @@ export default function EnhancedAITutorPage() {
         }
       }
     } catch (error: any) {
-      console.error('Error fetching sessions:', error);
+      // Handle errors gracefully
+      if (error.status === 503) {
+        // Service temporarily unavailable - check if retryable
+        const errorMsg = error.data?.error?.message || error.message || 'Service temporarily unavailable';
+        const isRetryable = error.data?.error?.retryable !== false;
+        
+        if (sessionsEndpointAvailable === null) {
+          console.warn(`AI Tutoring service temporarily unavailable: ${errorMsg}`);
+        }
+        
+        // Mark as unavailable but allow retry if retryable
+        if (!isRetryable) {
+          setSessionsEndpointAvailable(false);
+        }
+        setSessions([]);
+      } else if (error.status === 500) {
+        // Backend server error
+        const errorData = error.data || {};
+        const errorMsg = errorData.error?.message || errorData.detail || error.message || 'Backend service error';
+        const errorStr = typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg);
+        
+        // Detect Supabase configuration errors (check first as they're configuration issues)
+        const isSupabaseConfigError = errorStr.includes('supabase_url is required') ||
+                                     errorStr.includes('supabase_url') ||
+                                     errorStr.includes('SUPABASE_URL') ||
+                                     errorStr.includes('Invalid API key') || 
+                                     errorStr.includes('Supabase') ||
+                                     errorStr.includes('anon') ||
+                                     errorStr.includes('service_role') ||
+                                     errorStr.includes('API key') ||
+                                     errorStr.includes('authentication') ||
+                                     errorStr.includes('JSON could not be generated');
+        
+        // Detect Python syntax/indentation errors
+        const isPythonSyntaxError = errorStr.includes('unindent') || 
+                                   errorStr.includes('indentation') || 
+                                   errorStr.includes('IndentationError') ||
+                                   errorStr.includes('f-string') || 
+                                   errorStr.includes('backslash') ||
+                                   errorStr.includes('SyntaxError') ||
+                                   /\([^)]+\.py,\s*line\s*\d+\)/.test(errorStr);
+        
+        // Extract file and line number if available
+        const fileMatch = errorStr.match(/\(([^)]+\.py),\s*line\s*(\d+)\)/);
+        
+        // Only log and show toast once to avoid spam
+        if (sessionsEndpointAvailable === null && !configErrorShownRef.current) {
+          if (isSupabaseConfigError) {
+            if (errorStr.includes('supabase_url is required') || errorStr.includes('supabase_url')) {
+              const errorMessage = 'Backend configuration error: The backend is missing the Supabase URL environment variable (SUPABASE_URL). This is a backend configuration issue that needs to be fixed by the development team.';
+              console.warn('AI Tutoring service -', errorMessage);
+              configErrorShownRef.current = true;
+              toast({
+                title: 'Backend Configuration Error',
+                description: errorMessage,
+                variant: 'destructive',
+                duration: 8000
+              });
+            } else {
+              const errorMessage = 'Backend authentication error: The backend is using an invalid Supabase API key or missing configuration. This is a backend configuration issue.';
+              console.warn('AI Tutoring service -', errorMessage);
+              configErrorShownRef.current = true;
+              toast({
+                title: 'Backend Configuration Error',
+                description: errorMessage,
+                variant: 'destructive',
+                duration: 8000
+              });
+            }
+          } else if (isPythonSyntaxError) {
+            if (fileMatch) {
+              console.warn(`AI Tutoring service - backend code error detected in ${fileMatch[1]} (line ${fileMatch[2]}). This needs to be fixed in the backend.`);
+            } else {
+              console.warn('AI Tutoring service - backend code error detected. This needs to be fixed in the backend.');
+            }
+          } else {
+            console.warn('AI Tutoring service - backend error:', errorStr.substring(0, 200));
+          }
+        }
+        
+        // Don't mark as permanently unavailable for 500 errors - might be temporary
+        // Allow retries since backend might be fixed
+        setSessions([]);
+      } else if (error.status === 404) {
+        // Endpoint not found - should not happen with correct path, but handle gracefully
+        console.warn('AI Tutoring sessions endpoint not found');
+        setSessionsEndpointAvailable(false);
+        setSessions([]);
+      } else {
+        console.error('Error fetching sessions:', error);
+        setSessions([]);
+      }
+    } finally {
+      setFetchingSessions(false);
     }
   };
 
   const fetchMessages = async (sessionId: string) => {
     try {
       const response = await api.aiTutoring.getSessionMessages(sessionId, 100);
-      setMessages(response.messages || []);
+      setMessages(response.messages || response || []);
     } catch (error: any) {
       console.error('Error fetching messages:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to load messages',
-        variant: 'destructive'
-      });
+      // Only show toast for non-404 errors (404 might mean no messages yet)
+      if (error.status !== 404) {
+        const errorMsg = error.data?.error?.message || error.message || 'Failed to load messages';
+        toast({
+          title: 'Error',
+          description: errorMsg,
+          variant: 'destructive'
+        });
+      } else {
+        // 404 might mean no messages yet, which is fine
+        setMessages([]);
+      }
     }
   };
 
   const createNewSession = async () => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      toast({
+        title: 'Authentication Required',
+        description: 'Please log in to create a new chat session.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    // Validate required fields
+    if (!subject || subject.trim() === '') {
+      toast({
+        title: 'Subject Required',
+        description: 'Please select a subject before creating a new chat.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     try {
       setLoading(true);
-      const response = await api.aiTutoring.createSession({
+      
+      // Prepare request payload with validation
+      const payload = {
         user_id: user.id,
         session_name: `New Chat ${new Date().toLocaleDateString()}`,
-        subject: subject
-      });
+        subject: subject.trim()
+      };
+
+      // Log request for debugging (only in development)
+      if (import.meta.env.DEV) {
+        console.log('Creating AI tutoring session:', payload);
+      }
+
+      const response = await api.aiTutoring.createSession(payload);
       
-      const newSession = response.session;
+      const newSession = response.session || response;
       setSessions(prev => [newSession, ...prev]);
       setCurrentSession(newSession);
       setMessages([]);
+      setSessionCreateRetryCount(0);
+      setSessionsEndpointAvailable(true);
       
       toast({
         title: 'New Chat Created',
         description: 'Start chatting with your AI tutor!'
       });
     } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to create session',
-        variant: 'destructive'
+      // Log error details for debugging
+      console.error('Failed to create AI tutoring session:', {
+        status: error.status,
+        message: error.message,
+        data: error.data
       });
+
+      // Handle errors with appropriate messaging
+      if (error.status === 503) {
+        const errorData = error.data?.error || {};
+        const errorMsg = errorData.message || error.message || 'Service temporarily unavailable';
+        const isRetryable = errorData.retryable !== false;
+        
+        if (isRetryable && sessionCreateRetryCount < 2) {
+          // Retry after a short delay if retryable
+          setSessionCreateRetryCount(prev => prev + 1);
+          setTimeout(() => {
+            createNewSession();
+          }, 2000);
+          toast({
+            title: 'Retrying...',
+            description: `${errorMsg}. Retrying...`,
+            variant: 'default'
+          });
+        } else {
+          toast({
+            title: 'Service Unavailable',
+            description: errorMsg || 'AI Tutoring service is temporarily unavailable. Please try again later.',
+            variant: 'destructive'
+          });
+          setSessionCreateRetryCount(0);
+        }
+      } else if (error.status === 500) {
+        // Backend server error
+        const errorData = error.data || {};
+        const errorMsg = errorData.error?.message || errorData.detail || error.message || 'Backend service error';
+        const errorStr = typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg);
+        
+        // Detect Supabase configuration errors (check first as they're configuration issues)
+        const isSupabaseConfigError = errorStr.includes('supabase_url is required') ||
+                                     errorStr.includes('supabase_url') ||
+                                     errorStr.includes('SUPABASE_URL') ||
+                                     errorStr.includes('Invalid API key') || 
+                                     errorStr.includes('Supabase') ||
+                                     errorStr.includes('anon') ||
+                                     errorStr.includes('service_role') ||
+                                     errorStr.includes('API key') ||
+                                     errorStr.includes('authentication') ||
+                                     errorStr.includes('JSON could not be generated');
+        
+        // Detect Python syntax/indentation errors
+        const isPythonSyntaxError = errorStr.includes('unindent') || 
+                                   errorStr.includes('indentation') || 
+                                   errorStr.includes('IndentationError') ||
+                                   errorStr.includes('f-string') || 
+                                   errorStr.includes('backslash') ||
+                                   errorStr.includes('SyntaxError') ||
+                                   /\([^)]+\.py,\s*line\s*\d+\)/.test(errorStr);
+        
+        // Extract file and line number if available
+        const fileMatch = errorStr.match(/\(([^)]+\.py),\s*line\s*(\d+)\)/);
+        let userMessage = '';
+        
+        if (isSupabaseConfigError) {
+          if (errorStr.includes('supabase_url is required') || errorStr.includes('supabase_url')) {
+            userMessage = 'Backend configuration error: The backend is missing the Supabase URL environment variable (SUPABASE_URL). This is a backend configuration issue that needs to be fixed by the development team.';
+          } else {
+            userMessage = 'Backend authentication error: The backend is using an invalid Supabase API key or missing configuration. This is a backend configuration issue that needs to be fixed by the development team.';
+          }
+        } else if (isPythonSyntaxError) {
+          if (fileMatch) {
+            userMessage = `Backend code error detected in ${fileMatch[1]} (line ${fileMatch[2]}). This is a backend issue that needs to be fixed by the development team.`;
+          } else {
+            userMessage = 'Backend code error detected. This is a backend issue that needs to be fixed by the development team.';
+          }
+        } else {
+          userMessage = typeof errorMsg === 'string' ? errorMsg : 'Internal server error. Please try again later.';
+        }
+        
+        toast({
+          title: 'Service Error',
+          description: userMessage,
+          variant: 'destructive',
+          duration: 6000 // Show longer for technical errors
+        });
+        setSessionCreateRetryCount(0);
+      } else if (error.status === 404) {
+        toast({
+          title: 'Feature Not Available',
+          description: 'Session creation endpoint not found. Please check your connection.',
+          variant: 'default'
+        });
+      } else if (error.status === 400) {
+        const errorMsg = error.data?.error?.message || error.data?.detail || error.message || 'Invalid request';
+        toast({
+          title: 'Invalid Request',
+          description: errorMsg,
+          variant: 'destructive'
+        });
+      } else {
+        const errorMsg = error.data?.error?.message || error.message || 'Failed to create session';
+        toast({
+          title: 'Error',
+          description: errorMsg,
+          variant: 'destructive'
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -522,6 +770,7 @@ export default function EnhancedAITutorPage() {
         }
       }
       
+      // Refresh sessions after sending message
       fetchSessions();
     } catch (error: any) {
       toast({
@@ -694,6 +943,7 @@ export default function EnhancedAITutorPage() {
         fileInputRef.current.value = '';
       }
       
+      // Refresh sessions after sending message
       fetchSessions();
     } catch (error: any) {
       toast({
@@ -1256,7 +1506,12 @@ IMPORTANT: The "wolfram_query" field MUST be formatted exactly as it should be e
             {/* Sessions List */}
             <ScrollArea className="flex-1">
               <div className="p-2 space-y-1">
-                {sessions.length === 0 ? (
+                {sessions.length === 0 && fetchingSessions ? (
+                  <div className="p-4 text-center text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin mx-auto mb-2" />
+                    Loading sessions...
+                  </div>
+                ) : sessions.length === 0 ? (
                   <div className="p-4 text-center text-sm text-muted-foreground">
                     No chats yet. Start a new conversation!
                   </div>
@@ -1431,6 +1686,12 @@ IMPORTANT: The "wolfram_query" field MUST be formatted exactly as it should be e
                 <p className="text-muted-foreground">
                   Create a new chat to begin learning with your AI tutor. Ask questions, get help with homework, or request explanations on any topic.
                 </p>
+                {sessionsEndpointAvailable === false && (
+                  <div className="p-3 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded-lg text-sm text-yellow-800 dark:text-yellow-200">
+                    <p className="font-medium">Service Temporarily Unavailable</p>
+                    <p className="text-xs mt-1">The AI Tutoring service is experiencing technical issues. Please try again in a moment.</p>
+                  </div>
+                )}
                 <Button onClick={createNewSession} disabled={loading} size="lg">
                   <Plus className="h-4 w-4 mr-2" />
                   New Chat
