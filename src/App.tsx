@@ -53,6 +53,8 @@ import Chat from "./pages/Chat";
 import UserContentUpload from "./pages/UserContentUpload";
 import ContentDownloads from "./pages/ContentDownloads";
 import PYQPractice from "./pages/PYQPractice";
+import DrawInAir from "./pages/DrawInAir";
+
 import SchoolManagement from "./pages/SchoolManagement";
 import NotFound from "./pages/NotFound";
 
@@ -90,6 +92,9 @@ const App = () => (
             <Route path="/dashboard/student/exams" element={<ExamList />} />
             <Route path="/dashboard/student/exam/start/:examSetId" element={<ExamTest />} />
             <Route path="/dashboard/student/practice/pyq" element={<PYQPractice />} />
+            <Route path="/dashboard/student/draw-in-air" element={<DrawInAir />} />
+            <Route path="/dashboard/student/practice/pyq" element={<PYQPractice />} />
+
             <Route path="/dashboard/student/exam/results/:sessionId" element={<ExamResults />} />
             <Route path="/dashboard/student/exam/history" element={<ExamHistory />} />
             <Route path="/dashboard/student/exam/attempts" element={<ExamAttemptsTable />} />

@@ -10,12 +10,12 @@ const getApiBaseUrl = () => {
   if (import.meta.env.VITE_API_BASE_URL) {
     return import.meta.env.VITE_API_BASE_URL;
   }
-  
+
   // Check if we're in development (localhost)
   if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
     return 'http://localhost:8000/api';
   }
-  
+
   // Production: use relative path (proxied through Vercel)
   return '/api';
 };
@@ -38,7 +38,7 @@ async function fetchAPI<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
-  
+
   const response = await fetch(url, {
     ...options,
     headers: {
@@ -57,7 +57,7 @@ async function fetchAPI<T>(
     }
     // Handle both old format (detail) and new format (error.message)
     let errorMessage = errorData.error?.message || errorData.detail || `HTTP ${response.status}: ${response.statusText}`;
-    
+
     // Provide more helpful error messages for common issues
     if (response.status === 404) {
       errorMessage = `Endpoint not found: ${endpoint}`;
@@ -66,18 +66,18 @@ async function fetchAPI<T>(
       const detailStr = typeof errorData.detail === 'string' ? errorData.detail : JSON.stringify(errorData.detail || {});
       const errorMsg = errorData.error?.message || errorMessage || '';
       const fullErrorText = errorMsg + ' ' + detailStr;
-      
+
       // Handle structured error responses
       // Check for Supabase configuration errors first (configuration issues)
       if (fullErrorText.includes('supabase_url is required') ||
-          fullErrorText.includes('supabase_url') ||
-          fullErrorText.includes('SUPABASE_URL')) {
+        fullErrorText.includes('supabase_url') ||
+        fullErrorText.includes('SUPABASE_URL')) {
         errorMessage = "Backend configuration error: The backend is missing the Supabase URL environment variable (SUPABASE_URL). This is a backend configuration issue that needs to be fixed by the development team.";
-      } else if (fullErrorText.includes('Invalid API key') || 
-          fullErrorText.includes('Supabase') ||
-          fullErrorText.includes('anon') ||
-          fullErrorText.includes('service_role') ||
-          (fullErrorText.includes('API key') && fullErrorText.includes('authentication'))) {
+      } else if (fullErrorText.includes('Invalid API key') ||
+        fullErrorText.includes('Supabase') ||
+        fullErrorText.includes('anon') ||
+        fullErrorText.includes('service_role') ||
+        (fullErrorText.includes('API key') && fullErrorText.includes('authentication'))) {
         errorMessage = "Backend authentication error: The backend is using an invalid Supabase API key. This is a backend configuration issue that needs to be fixed by the development team.";
       } else if (errorData.error?.message) {
         errorMessage = errorData.error.message;
@@ -112,7 +112,7 @@ async function fetchAPI<T>(
         errorMessage = "Service temporarily unavailable - please try again later";
       }
     }
-    
+
     throw new APIError(
       errorMessage,
       response.status,
@@ -128,7 +128,7 @@ async function fetchFormData<T>(
   formData: FormData
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
-  
+
   const response = await fetch(url, {
     method: 'POST',
     body: formData,
@@ -231,7 +231,7 @@ export const api = {
         text: params.text,
       });
       if (params.subject) queryParams.append('subject', params.subject);
-      
+
       return fetchAPI<any>(`/doubt/text?${queryParams}`, {
         method: 'POST',
       });
@@ -245,7 +245,7 @@ export const api = {
       formData.append('user_id', params.user_id);
       formData.append('image', params.image);
       if (params.subject) formData.append('subject', params.subject);
-      
+
       return fetchFormData<any>('/doubt/image', formData);
     },
     voice: (params: {
@@ -257,7 +257,7 @@ export const api = {
       formData.append('user_id', params.user_id);
       formData.append('audio', params.audio);
       if (params.subject) formData.append('subject', params.subject);
-      
+
       return fetchFormData<any>('/doubt/voice', formData);
     },
     history: (params: {
@@ -268,7 +268,7 @@ export const api = {
       const queryParams = new URLSearchParams({ user_id: params.user_id });
       if (params.limit) queryParams.append('limit', params.limit.toString());
       if (params.offset) queryParams.append('offset', params.offset.toString());
-      
+
       return fetchAPI<any[]>(`/doubt/history?${queryParams}`);
     },
     wolframChat: (params: {
@@ -279,7 +279,7 @@ export const api = {
       if (params.include_steps !== undefined) {
         queryParams.append('include_steps', params.include_steps.toString());
       }
-      
+
       return fetchAPI<any>(`/doubt/wolfram/chat?${queryParams}`, {
         method: 'POST',
       });
@@ -327,7 +327,7 @@ export const api = {
       if (params?.user_id) queryParams.append('user_id', params.user_id);
       if (params?.limit) queryParams.append('limit', params.limit.toString());
       if (params?.offset) queryParams.append('offset', params.offset.toString());
-      
+
       const query = queryParams.toString();
       return fetchAPI<any[]>(`/homework/sessions${query ? `?${query}` : ''}`);
     },
@@ -343,7 +343,7 @@ export const api = {
       const queryParams = new URLSearchParams({ user_id: params.user_id });
       if (params.plan_date) queryParams.append('plan_date', params.plan_date);
       if (params.subject) queryParams.append('subject', params.subject);
-      
+
       return fetchAPI<any>(`/microplan/generate?${queryParams}`, {
         method: 'POST',
       });
@@ -380,7 +380,7 @@ export const api = {
       if (params?.year) queryParams.append('year', params.year.toString());
       if (params?.limit) queryParams.append('limit', params.limit.toString());
       if (params?.offset) queryParams.append('offset', params.offset.toString());
-      
+
       const query = queryParams.toString();
       return fetchAPI<any[]>(`/exam/sets${query ? `?${query}` : ''}`);
     },
@@ -415,7 +415,7 @@ export const api = {
         session_id: params.session_id,
         user_id: params.user_id,
       });
-      
+
       return fetchAPI<any>(`/exam/answer?${queryParams}`, {
         method: 'PUT',
         body: JSON.stringify(params.answer),
@@ -439,7 +439,7 @@ export const api = {
       const queryParams = new URLSearchParams({ user_id: params.user_id });
       if (params.subject) queryParams.append('subject', params.subject);
       if (params.limit) queryParams.append('limit', params.limit.toString());
-      
+
       return fetchAPI<any>(`/exam/history?${queryParams}`);
     },
   },
@@ -471,7 +471,7 @@ export const api = {
         session_id: params.session_id,
         user_id: params.user_id,
       });
-      
+
       return fetchAPI<any>(`/quiz/answer?${queryParams}`, {
         method: 'PUT',
         body: JSON.stringify(params.answer),
@@ -485,7 +485,7 @@ export const api = {
         session_id: params.session_id,
         user_id: params.user_id,
       });
-      
+
       return fetchAPI<any>(`/quiz/submit?${queryParams}`, {
         method: 'POST',
       });
@@ -494,7 +494,7 @@ export const api = {
       const queryParams = new URLSearchParams({
         user_id: userId,
       });
-      
+
       return fetchAPI<any>(`/quiz/session/${sessionId}?${queryParams}`);
     },
   },
@@ -578,7 +578,7 @@ export const api = {
       if (params?.min_mastery) queryParams.append('min_mastery', params.min_mastery.toString());
       if (params?.limit) queryParams.append('limit', params.limit.toString());
       if (params?.offset) queryParams.append('offset', params.offset.toString());
-      
+
       const query = queryParams.toString();
       return fetchAPI<any[]>(`/admin/students${query ? `?${query}` : ''}`);
     },
@@ -630,7 +630,7 @@ export const api = {
       if (params.difficulty && params.difficulty !== "none") {
         queryParams.append('difficulty', params.difficulty);
       }
-      
+
       const query = queryParams.toString();
       return fetchFormData<any>(`/content/upload/file?${query}`, formData);
     },
@@ -730,7 +730,7 @@ export const api = {
       const queryParams = new URLSearchParams();
       if (params?.subject) queryParams.append('subject', params.subject);
       if (params?.min_mastery) queryParams.append('min_mastery', params.min_mastery.toString());
-      
+
       const query = queryParams.toString();
       return fetchAPI<any>(`/admin/export${query ? `?${query}` : ''}`, {
         method: 'GET',
@@ -844,7 +844,7 @@ export const api = {
     }) => {
       const queryParams = new URLSearchParams();
       if (params.subject) queryParams.append('subject', params.subject);
-      
+
       const query = queryParams.toString();
       return fetchAPI<any[]>(`/progress/${params.user_id}${query ? `?${query}` : ''}`);
     },
@@ -868,7 +868,7 @@ export const api = {
         total_questions: params.total_questions.toString(),
         time_spent_minutes: params.time_spent_minutes.toString(),
       });
-      
+
       return fetchAPI<any>(`/progress?${queryParams}`, {
         method: 'PUT',
       });
@@ -892,7 +892,7 @@ export const api = {
       if (params?.user_id) queryParams.append('user_id', params.user_id);
       if (params?.subject) queryParams.append('subject', params.subject);
       if (params?.days) queryParams.append('days', params.days.toString());
-      
+
       const query = queryParams.toString();
       return fetchAPI<any>(`/analytics/trends${query ? `?${query}` : ''}`);
     },
@@ -908,7 +908,7 @@ export const api = {
       });
       if (params.subject) queryParams.append('subject', params.subject);
       if (params.topic_id) queryParams.append('topic_id', params.topic_id);
-      
+
       return fetchAPI<any>(`/analytics/event?${queryParams}`, {
         method: 'POST',
       });
@@ -935,7 +935,7 @@ export const api = {
         correct_answers: params.correct_answers.toString(),
       });
       if (params.exam_set_id) queryParams.append('exam_set_id', params.exam_set_id);
-      
+
       return fetchAPI<any>(`/analytics/test-result?${queryParams}`, {
         method: 'POST',
       });
@@ -960,7 +960,7 @@ export const api = {
         total_time_minutes: params.total_time_minutes.toString(),
         streak_days: params.streak_days.toString(),
       });
-      
+
       return fetchAPI<any>(`/analytics/progress-snapshot?${queryParams}`, {
         method: 'POST',
       });
@@ -1333,4 +1333,6 @@ export const api = {
         body: JSON.stringify(data),
       }),
   },
+
+
 };

@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import StudentSidebar from "@/components/StudentSidebar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowRight, CheckCircle2, Clock, TrendingUp, Calculator, Microscope, BookOpen, Target, FlaskConical, FileText, Award, ChevronDown, ChevronUp, Activity } from "lucide-react";
+import { ArrowRight, CheckCircle2, Clock, TrendingUp, Calculator, Microscope, BookOpen, Target, FlaskConical, FileText, Award, ChevronDown, ChevronUp, Activity, Sparkles, Eye, Hand, Mic, Box, Brain } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
@@ -43,7 +43,7 @@ const StudentDashboard = () => {
 
       try {
         setLoadingData(true);
-        
+
         // Fetch student profile
         const { data: studentProfile, error: profileError } = await supabase
           .from("student_profiles")
@@ -61,7 +61,7 @@ const StudentDashboard = () => {
               .select("class_grade, school_name")
               .eq("user_id", user.id)
               .limit(1);
-            
+
             if (fallbackData && fallbackData.length > 0) {
               const profile = fallbackData[0];
               setStudentData(prev => ({
@@ -86,13 +86,13 @@ const StudentDashboard = () => {
         try {
           const summary = await api.progress.getSummary(user.id);
           setProgressSummary(summary);
-          
+
           // Calculate overall stats from summary
           if (summary) {
             const totalLessons = summary.total_topics_attempted || summary.total_topics || 0;
             const avgScore = summary.average_mastery || summary.avg_mastery_score || 0;
             const totalTime = summary.total_time_minutes || 0;
-            
+
             // Format time: show hours and minutes
             let timeDisplay = "0h";
             if (totalTime > 0) {
@@ -104,7 +104,7 @@ const StudentDashboard = () => {
                 timeDisplay = `${minutes}m`;
               }
             }
-            
+
             setStudentData(prev => ({
               ...prev,
               lessonsCompleted: totalLessons,
@@ -116,10 +116,10 @@ const StudentDashboard = () => {
             const breakdown = summary.subject_breakdown || summary.subjects || {};
             if (breakdown) {
               const mathProgress = breakdown.mathematics?.average_mastery || breakdown.mathematics?.avg_mastery_score || 0;
-              const scienceProgress = breakdown.physics?.average_mastery || breakdown.physics?.avg_mastery_score || 
-                                     breakdown.chemistry?.average_mastery || breakdown.chemistry?.avg_mastery_score || 
-                                     breakdown.biology?.average_mastery || breakdown.biology?.avg_mastery_score || 0;
-              
+              const scienceProgress = breakdown.physics?.average_mastery || breakdown.physics?.avg_mastery_score ||
+                breakdown.chemistry?.average_mastery || breakdown.chemistry?.avg_mastery_score ||
+                breakdown.biology?.average_mastery || breakdown.biology?.avg_mastery_score || 0;
+
               setStudentData(prev => ({
                 ...prev,
                 mathProgress: Math.round(mathProgress),
@@ -129,7 +129,7 @@ const StudentDashboard = () => {
               // Store detailed subject analytics
               const analytics: Record<string, any> = {};
               const subjects = ['mathematics', 'physics', 'chemistry', 'biology'];
-              
+
               subjects.forEach((subject) => {
                 const subjectData = breakdown[subject];
                 if (subjectData) {
@@ -144,7 +144,7 @@ const StudentDashboard = () => {
                   };
                 }
               });
-              
+
               setSubjectAnalytics(analytics);
             }
           }
@@ -171,12 +171,12 @@ const StudentDashboard = () => {
                   user_id: user.id,
                   subject: subject as any,
                 });
-                
+
                 if (progressData && progressData.length > 0) {
                   const totalQuestions = progressData.reduce((sum: number, p: any) => sum + (p.questions_attempted || 0), 0);
                   const totalCorrect = progressData.reduce((sum: number, p: any) => sum + (p.correct_answers || 0), 0);
                   const totalTime = progressData.reduce((sum: number, p: any) => sum + (p.total_time_minutes || 0), 0);
-                  
+
                   return {
                     subject,
                     topicsCount: progressData.length,
@@ -385,7 +385,7 @@ const StudentDashboard = () => {
 
   const handleGenerateMicroplan = async () => {
     if (!user) return;
-    
+
     try {
       const microplan = await api.microplan.generate({ user_id: user.id });
       setTodayMicroplan(microplan);
@@ -405,7 +405,7 @@ const StudentDashboard = () => {
   return (
     <div className="flex min-h-screen w-full">
       <StudentSidebar />
-      
+
       <main className="flex-1 p-8 overflow-y-auto bg-background">
         <div className="max-w-7xl mx-auto">
           {/* Page Heading */}
@@ -470,6 +470,8 @@ const StudentDashboard = () => {
                 </Card>
               )}
 
+
+
               {/* Subject Analysis */}
               <h2 className="text-xl font-bold">Subject Analysis</h2>
               <div className="space-y-4">
@@ -482,7 +484,7 @@ const StudentDashboard = () => {
                       chemistry: FlaskConical,
                       biology: BookOpen,
                     };
-                    const subjectColors: Record<string, string> = {
+                    const subjectColors: Record<string, { bg: string; text: string; border: string; progress: string }> = {
                       mathematics: {
                         bg: "bg-primary/10",
                         text: "text-primary",
@@ -529,7 +531,7 @@ const StudentDashboard = () => {
 
                     return (
                       <Card key={subject} className="overflow-hidden">
-                        <CardHeader 
+                        <CardHeader
                           className="cursor-pointer hover:bg-muted/50 transition-colors"
                           onClick={() => {
                             const newExpanded = new Set(expandedSubjects);
@@ -566,8 +568,8 @@ const StudentDashboard = () => {
                             </div>
                           </div>
                           <div className="mt-4 w-full bg-muted rounded-full h-2">
-                            <div 
-                              className={`${colors.progress} h-2 rounded-full transition-all`} 
+                            <div
+                              className={`${colors.progress} h-2 rounded-full transition-all`}
                               style={{ width: `${mastery}%` }}
                             ></div>
                           </div>
@@ -631,7 +633,7 @@ const StudentDashboard = () => {
                   </Card>
                 )}
               </div>
-              
+
               {/* Student Info */}
               {studentData.grade && (
                 <div className="p-4 bg-card rounded-lg border">
@@ -704,9 +706,8 @@ const StudentDashboard = () => {
                       return (
                         <div
                           key={topic.id}
-                          className={`flex items-center justify-between p-4 bg-card rounded-lg border hover:shadow-md transition-shadow ${
-                            topic.isCompleted ? "opacity-60" : ""
-                          }`}
+                          className={`flex items-center justify-between p-4 bg-card rounded-lg border hover:shadow-md transition-shadow ${topic.isCompleted ? "opacity-60" : ""
+                            }`}
                         >
                           <div className="flex items-center gap-4">
                             <div className={`${iconColor} p-3 rounded-lg`}>
@@ -758,12 +759,12 @@ const StudentDashboard = () => {
                         biology: "bg-green-500/10 text-green-500 border-green-500/20",
                       };
                       const subjectColor = subjectColors[exam.subject?.toLowerCase() || ""] || "bg-muted text-muted-foreground border-muted";
-                      
+
                       const score = exam.score || 0;
                       const totalMarks = exam.total_marks || 100;
                       const percentage = totalMarks > 0 ? Math.round((score / totalMarks) * 100) : 0;
                       const examDate = exam.created_at || exam.start_time;
-                      
+
                       return (
                         <div
                           key={exam.id || exam.session_id}

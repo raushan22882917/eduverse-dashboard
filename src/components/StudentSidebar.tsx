@@ -18,7 +18,8 @@ import {
   Upload,
   Sparkles,
   FileDown,
-  FileQuestion
+  FileQuestion,
+  Hand
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -57,13 +58,13 @@ const StudentSidebar = () => {
               .select("class_grade")
               .eq("user_id", user.id)
               .limit(1);
-            
+
             if (fallbackData && fallbackData.length > 0 && fallbackData[0].class_grade) {
               setClassGrade(fallbackData[0].class_grade);
             }
             return;
           }
-          
+
           if (error.code !== "PGRST116") {
             console.error("Error fetching student profile:", error);
             return;
@@ -146,13 +147,22 @@ const StudentSidebar = () => {
             <FileDown className="h-5 w-5" />
             <span className="text-sm font-medium">Download Content</span>
           </NavLink>
+
+          <NavLink
+            to="/dashboard/student/draw-in-air"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-accent transition-colors"
+            activeClassName="bg-primary/20 text-primary hover:bg-primary/30"
+          >
+            <Hand className="h-5 w-5" />
+            <span className="text-sm font-medium">Draw In Air</span>
+          </NavLink>
           <NavLink
             to="/dashboard/student/upload-content"
             className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-accent transition-colors"
             activeClassName="bg-primary/20 text-primary hover:bg-primary/30"
           >
-            <Sparkles className="h-5 w-5" />
-            <span className="text-sm font-medium">Practice PYQ</span>
+            <Upload className="h-5 w-5" />
+            <span className="text-sm font-medium">Upload Content</span>
           </NavLink>
           <NavLink
             to="/dashboard/student/exams"
@@ -162,7 +172,7 @@ const StudentSidebar = () => {
             <FileText className="h-5 w-5" />
             <span className="text-sm font-medium">Practice Exams</span>
           </NavLink>
-          
+
           <NavLink
             to="/dashboard/student/achievements"
             className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-accent transition-colors"
