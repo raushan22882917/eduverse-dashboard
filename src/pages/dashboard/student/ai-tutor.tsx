@@ -33,7 +33,9 @@ import {
   History,
   Search,
   Database,
-  AlertCircle
+  AlertCircle,
+  Trash2,
+  MoreVertical
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
@@ -44,6 +46,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 interface Source {
   id?: string;
@@ -189,6 +198,7 @@ export default function AITutorPage() {
   const [memoryItems, setMemoryItems] = useState<MemoryItem[]>([]);
   const [checkingMemory, setCheckingMemory] = useState(false);
   const [showMemoryPanel, setShowMemoryPanel] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -435,6 +445,49 @@ export default function AITutorPage() {
       localStorage.setItem(`ai-tutor-memory-${user?.id}`, JSON.stringify(updatedMemory));
     } catch (error) {
       console.error('Error updating memory usage:', error);
+    }
+  };
+
+  // Delete individual memory item
+  const deleteMemoryItem = async (memoryId: string) => {
+    try {
+      const updatedMemory = memoryItems.filter(item => item.id !== memoryId);
+      setMemoryItems(updatedMemory);
+      localStorage.setItem(`ai-tutor-memory-${user?.id}`, JSON.stringify(updatedMemory));
+      
+      toast({
+        title: 'Memory Deleted',
+        description: 'The conversation has been removed from memory.',
+        duration: 3000
+      });
+    } catch (error) {
+      console.error('Error deleting memory item:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to delete memory item.',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  // Clear all memory
+  const clearAllMemory = async () => {
+    try {
+      setMemoryItems([]);
+      localStorage.removeItem(`ai-tutor-memory-${user?.id}`);
+      
+      toast({
+        title: 'Memory Cleared',
+        description: 'All saved conversations have been deleted.',
+        duration: 3000
+      });
+    } catch (error) {
+      console.error('Error clearing memory:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to clear memory.',
+        variant: 'destructive'
+      });
     }
   };
 
@@ -939,9 +992,29 @@ export default function AITutorPage() {
                 <Database className="h-4 w-4 text-primary" />
                 <span className="text-sm font-medium">Memory ({memoryItems.length})</span>
               </div>
-              <Badge variant="outline" className="text-xs">
-                Enhanced Search
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-xs">
+                  Enhanced Search
+                </Badge>
+                {memoryItems.length > 0 && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-6 w-6">
+                        <MoreVertical className="h-3 w-3" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={() => setShowClearConfirm(true)}
+                        className="text-red-600 focus:text-red-600"
+                      >
+                        <Trash2 className="h-3 w-3 mr-2" />
+                        Clear All Memory
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </div>
             </div>
             <ScrollArea className="h-40">
               <div className="space-y-2">
@@ -952,14 +1025,16 @@ export default function AITutorPage() {
                   return (
                     <div
                       key={item.id}
-                      className="p-2 rounded-lg bg-background border text-xs cursor-pointer hover:bg-muted/50 transition-colors"
-                      onClick={() => {
-                        setInput(item.content.question);
-                        setShowMemoryPanel(false);
-                      }}
+                      className="group p-2 rounded-lg bg-background border text-xs hover:bg-muted/50 transition-colors"
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
+                        <div 
+                          className="flex-1 min-w-0 cursor-pointer"
+                          onClick={() => {
+                            setInput(item.content.question);
+                            setShowMemoryPanel(false);
+                          }}
+                        >
                           <p className="font-medium truncate">{item.title}</p>
                           <p className="text-muted-foreground text-xs">
                             {formatDate(item.created_at)} • {item.subject}
@@ -971,11 +1046,24 @@ export default function AITutorPage() {
                           )}
                         </div>
                         <div className="flex flex-col items-end gap-1">
-                          {usageCount > 0 && (
-                            <Badge variant="secondary" className="text-xs h-4 px-1">
-                              {usageCount}x
-                            </Badge>
-                          )}
+                          <div className="flex items-center gap-1">
+                            {usageCount > 0 && (
+                              <Badge variant="secondary" className="text-xs h-4 px-1">
+                                {usageCount}x
+                              </Badge>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity text-red-500 hover:text-red-700 hover:bg-red-50"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteMemoryItem(item.id);
+                              }}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
                           <div className="flex items-center gap-1">
                             {item.content.sources && item.content.sources.length > 0 && (
                               <BookMarked className="h-3 w-3 text-green-600" />
@@ -1385,6 +1473,11 @@ export default function AITutorPage() {
                   <div className="flex items-center gap-1">
                     <Database className="h-3 w-3" />
                     <span>{memoryItems.length} memories</span>
+                    {memoryItems.length > 0 && (
+                      <span className="text-muted-foreground">
+                        ({memoryItems.filter(item => item.metadata?.usage_count > 0).length} used)
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-1">
                     <BookMarked className="h-3 w-3" />
@@ -1410,6 +1503,46 @@ export default function AITutorPage() {
           </div>
         )}
       </div>
+
+      {/* Clear Memory Confirmation Dialog */}
+      <Dialog open={showClearConfirm} onOpenChange={setShowClearConfirm}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Trash2 className="h-5 w-5 text-red-500" />
+              Clear All Memory
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Are you sure you want to delete all saved conversations? This action cannot be undone.
+            </p>
+            <div className="bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
+              <p className="text-xs text-yellow-800 dark:text-yellow-200">
+                <strong>Warning:</strong> You will lose {memoryItems.length} saved conversation{memoryItems.length !== 1 ? 's' : ''} and their associated learning history.
+              </p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowClearConfirm(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  clearAllMemory();
+                  setShowClearConfirm(false);
+                }}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete All
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
