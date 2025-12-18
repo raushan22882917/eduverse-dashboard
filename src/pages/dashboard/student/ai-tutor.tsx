@@ -32,7 +32,8 @@ import {
   Brain,
   History,
   Search,
-  Database
+  Database,
+  AlertCircle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
@@ -286,19 +287,39 @@ export default function AITutorPage() {
     setCheckingMemory(true);
     
     try {
-      // Find similar questions in memory
-      const similarities = memoryItems.map(item => ({
-        item,
-        similarity: calculateSimilarity(question, item.content.question)
-      }));
+      // Enhanced semantic similarity search
+      const similarities = memoryItems.map(item => {
+        const basicSimilarity = calculateSimilarity(question, item.content.question);
+        const semanticSimilarity = calculateSemanticSimilarity(question, item.content.question);
+        const subjectMatch = item.subject === subject ? 0.1 : 0;
+        
+        // Weighted combination of different similarity measures
+        const combinedSimilarity = (basicSimilarity * 0.4) + (semanticSimilarity * 0.5) + subjectMatch;
+        
+        return {
+          item,
+          similarity: combinedSimilarity,
+          basicSimilarity,
+          semanticSimilarity,
+          recency: calculateRecencyScore(item.created_at)
+        };
+      });
       
-      // Sort by similarity and get the best match
-      similarities.sort((a, b) => b.similarity - a.similarity);
+      // Sort by combined score (similarity + recency)
+      similarities.sort((a, b) => {
+        const scoreA = a.similarity + (a.recency * 0.1);
+        const scoreB = b.similarity + (b.recency * 0.1);
+        return scoreB - scoreA;
+      });
       
       const bestMatch = similarities[0];
       
-      // If similarity is above threshold (e.g., 0.7), return the cached answer
-      if (bestMatch && bestMatch.similarity > 0.7) {
+      // Dynamic threshold based on question complexity and available matches
+      const threshold = calculateDynamicThreshold(question, similarities);
+      
+      if (bestMatch && bestMatch.similarity > threshold) {
+        // Update memory item usage for better ranking
+        await updateMemoryUsage(bestMatch.item.id);
         return bestMatch.item;
       }
       
@@ -308,6 +329,112 @@ export default function AITutorPage() {
       return null;
     } finally {
       setCheckingMemory(false);
+    }
+  };
+
+  // Enhanced semantic similarity calculation
+  const calculateSemanticSimilarity = (q1: string, q2: string): number => {
+    const norm1 = normalizeQuestion(q1);
+    const norm2 = normalizeQuestion(q2);
+    
+    // Extract key concepts and mathematical terms
+    const concepts1 = extractConcepts(norm1);
+    const concepts2 = extractConcepts(norm2);
+    
+    // Calculate concept overlap
+    const conceptOverlap = concepts1.filter(c => concepts2.includes(c)).length;
+    const totalConcepts = new Set([...concepts1, ...concepts2]).size;
+    
+    const conceptSimilarity = totalConcepts > 0 ? conceptOverlap / totalConcepts : 0;
+    
+    // Calculate structural similarity (question patterns)
+    const structuralSimilarity = calculateStructuralSimilarity(norm1, norm2);
+    
+    return (conceptSimilarity * 0.7) + (structuralSimilarity * 0.3);
+  };
+
+  // Extract key concepts from questions
+  const extractConcepts = (question: string): string[] => {
+    const mathConcepts = ['equation', 'derivative', 'integral', 'limit', 'function', 'graph', 'solve', 'calculate', 'find', 'prove'];
+    const physicsConcepts = ['force', 'energy', 'momentum', 'velocity', 'acceleration', 'wave', 'electric', 'magnetic', 'heat', 'pressure'];
+    const chemistryConcepts = ['atom', 'molecule', 'reaction', 'bond', 'element', 'compound', 'solution', 'acid', 'base', 'equilibrium'];
+    
+    const allConcepts = [...mathConcepts, ...physicsConcepts, ...chemistryConcepts];
+    
+    return allConcepts.filter(concept => question.includes(concept));
+  };
+
+  // Calculate structural similarity based on question patterns
+  const calculateStructuralSimilarity = (q1: string, q2: string): number => {
+    const patterns = [
+      /what is|what are/i,
+      /how to|how do/i,
+      /solve|find|calculate/i,
+      /explain|describe/i,
+      /why|when|where/i,
+      /prove|show|demonstrate/i
+    ];
+    
+    let matches = 0;
+    patterns.forEach(pattern => {
+      if (pattern.test(q1) && pattern.test(q2)) {
+        matches++;
+      }
+    });
+    
+    return matches / patterns.length;
+  };
+
+  // Calculate recency score (more recent = higher score)
+  const calculateRecencyScore = (createdAt: string): number => {
+    const now = new Date().getTime();
+    const created = new Date(createdAt).getTime();
+    const daysDiff = (now - created) / (1000 * 60 * 60 * 24);
+    
+    // Exponential decay: recent items get higher scores
+    return Math.exp(-daysDiff / 30); // 30-day half-life
+  };
+
+  // Calculate dynamic threshold based on context
+  const calculateDynamicThreshold = (question: string, similarities: any[]): number => {
+    const baseThreshold = 0.6;
+    
+    // Lower threshold for complex questions (more likely to benefit from memory)
+    const complexity = question.split(' ').length;
+    const complexityAdjustment = complexity > 10 ? -0.1 : 0;
+    
+    // Lower threshold if we have high-quality matches
+    const topSimilarity = similarities[0]?.similarity || 0;
+    const qualityAdjustment = topSimilarity > 0.8 ? -0.1 : 0;
+    
+    // Higher threshold if memory is sparse
+    const memoryDensity = memoryItems.length;
+    const densityAdjustment = memoryDensity < 5 ? 0.1 : 0;
+    
+    return Math.max(0.4, baseThreshold + complexityAdjustment + qualityAdjustment + densityAdjustment);
+  };
+
+  // Update memory usage for better ranking
+  const updateMemoryUsage = async (memoryId: string) => {
+    try {
+      const updatedMemory = memoryItems.map(item => {
+        if (item.id === memoryId) {
+          return {
+            ...item,
+            metadata: {
+              ...item.metadata,
+              usage_count: (item.metadata.usage_count || 0) + 1,
+              last_used: new Date().toISOString()
+            }
+          };
+        }
+        return item;
+      });
+      
+      setMemoryItems(updatedMemory);
+      localStorage.setItem(`ai-tutor-memory-${user?.id}`, JSON.stringify(updatedMemory));
+    } catch (error) {
+      console.error('Error updating memory usage:', error);
     }
   };
 
@@ -457,182 +584,218 @@ export default function AITutorPage() {
     setLoading(true);
 
     try {
-      // Step 1: Check memory for similar questions
-      const memoryResult = await searchMemory(questionText);
-      
-      if (memoryResult) {
-        // Found in memory - return cached answer
-        const aiMessage: Message = {
-          id: `memory-${Date.now()}`,
-          role: 'assistant',
-          content: memoryResult.content.answer,
+      // Enhanced Parallel Processing: Run all three systems simultaneously
+      const [memoryResult, ragResponse, directResponse] = await Promise.allSettled([
+        // 1. Memory Search - Check for similar previous questions
+        searchMemory(questionText),
+        
+        // 2. RAG Pipeline - Search curriculum materials
+        api.rag.query({
+          query: questionText,
           subject: subject,
-          created_at: new Date().toISOString(),
-          sources: memoryResult.content.sources,
-          fromMemory: true,
-          memoryId: memoryResult.id,
+          top_k: 8,
+          confidence_threshold: 0.2
+        }).catch(error => {
+          console.warn('RAG query failed, using offline system:', error);
+          return api.rag.offlineQuery({
+            query: questionText,
+            subject: subject,
+            top_k: 8,
+            confidence_threshold: 0.2
+          });
+        }),
+        
+        // 3. Direct AI Query - General knowledge fallback
+        api.rag.queryDirect({
+          query: questionText,
+          subject: subject as any
+        }).catch(error => {
+          console.warn('Direct query failed:', error);
+          return null;
+        })
+      ]);
+
+      // Process results and determine best response
+      let finalResponse: any = null;
+      let responseSource = '';
+      let confidence = 0;
+
+      // Priority 1: High-confidence memory result
+      if (memoryResult.status === 'fulfilled' && memoryResult.value) {
+        const memoryItem = memoryResult.value;
+        finalResponse = {
+          content: memoryItem.content.answer,
+          sources: memoryItem.content.sources,
           metadata: {
-            ...memoryResult.content.metadata,
+            ...memoryItem.content.metadata,
             from_memory: true,
-            original_question: memoryResult.content.question,
-            memory_created_at: memoryResult.created_at
+            original_question: memoryItem.content.question,
+            memory_created_at: memoryItem.created_at,
+            confidence: 0.95
           }
         };
-        
-        setMessages(prev => [...prev, aiMessage]);
+        responseSource = 'memory';
+        confidence = 0.95;
         
         toast({
           title: 'Answer from Memory',
           description: 'Found a similar question you asked before!',
           duration: 3000
         });
+      }
+      // Priority 2: High-confidence RAG result
+      else if (ragResponse.status === 'fulfilled' && ragResponse.value) {
+        const rag = ragResponse.value;
+        const ragConfidence = rag.confidence || 0;
+        const hasGoodContent = rag.answer || rag.generated_text;
+        const hasValidSources = rag.sources && rag.sources.length > 0;
         
-        // Translate AI response if needed
-        if (targetLanguage !== 'en') {
-          try {
-            const translateResponse = await api.translation.translate({
-              text: aiMessage.content,
-              source_language: 'en',
-              target_language: targetLanguage
-            });
-            if (translateResponse.translated_text) {
-              setMessages(prev => prev.map(msg => 
-                msg.id === aiMessage.id 
-                  ? { ...msg, content: translateResponse.translated_text, metadata: { ...msg.metadata, translated: true } }
-                  : msg
-              ));
+        if (hasGoodContent && (ragConfidence > 0.4 || hasValidSources)) {
+          finalResponse = {
+            content: rag.answer || rag.generated_text,
+            sources: rag.sources || [],
+            metadata: {
+              rag_used: true,
+              confidence: ragConfidence,
+              sources_count: rag.sources?.length || 0,
+              processing_time: rag.metadata?.processing_time,
+              offline_mode: rag.metadata?.offline_mode
             }
-          } catch (e) {
-            console.error('Translation error:', e);
-          }
+          };
+          responseSource = 'rag';
+          confidence = ragConfidence;
         }
-        
-        // Text-to-speech if enabled
-        if (ttsEnabled && synthRef.current) {
-          const textToSpeak = targetLanguage !== 'en' && aiMessage.metadata?.translated 
-            ? aiMessage.content 
-            : aiMessage.content;
-          speakText(textToSpeak, targetLanguage);
-        }
-        
-        fetchSessions();
-        return;
       }
-
-      // Step 2: Not in memory - use RAG pipeline
-      let response = await api.aiTutoring.sendMessage({
-        session_id: currentSession.id,
-        user_id: user.id,
-        content: questionText,
-        subject: subject,
-        message_type: 'text'
-      });
-
-      // Step 3: Check if RAG couldn't find content - fallback to direct Gemini query
-      const content = response.ai_message?.content || '';
-      const metadata = response.ai_message?.metadata as any || {};
-      const isNoContentFound = content.includes("couldn't find relevant information") || 
-                               content.includes("I couldn't find relevant information") ||
-                               metadata.reason === "no_content_found" ||
-                               (metadata.rag_used === false && metadata.confidence === 0);
-
-      if (isNoContentFound) {
-        try {
-          const directResponse = await api.rag.queryDirect({
-            query: questionText,
-            subject: subject as any
-          });
-          
-          if (directResponse.generated_text) {
-            response = {
-              ...response,
-              ai_message: {
-                ...response.ai_message!,
-                content: directResponse.generated_text,
-                metadata: {
-                  ...(response.ai_message!.metadata as any || {}),
-                  rag_used: false,
-                  fallback_to_direct: true,
-                  note: "Note: This answer is based on general knowledge as the specific topic wasn't found in the curriculum materials."
-                } as any
-              }
-            };
-          }
-        } catch (fallbackError) {
-          console.error('Direct query fallback failed:', fallbackError);
+      
+      // Priority 3: Direct AI response as fallback
+      if (!finalResponse && directResponse.status === 'fulfilled' && directResponse.value) {
+        const direct = directResponse.value;
+        if (direct.generated_text || direct.answer) {
+          finalResponse = {
+            content: direct.generated_text || direct.answer,
+            sources: [],
+            metadata: {
+              rag_used: false,
+              fallback_to_direct: true,
+              confidence: 0.7,
+              note: "This answer is based on general knowledge as the specific topic wasn't found in the curriculum materials."
+            }
+          };
+          responseSource = 'direct';
+          confidence = 0.7;
         }
       }
 
-      if (response.ai_message) {
-        // Extract sources from response
-        const { sources: extractedSources, sourcesCount, cleanedContent } = extractSources(
-          response,
-          response.ai_message.content || ''
-        );
-        
-        const aiMessage: Message = {
-          ...response.ai_message,
-          content: cleanedContent || response.ai_message.content,
-          sources: extractedSources.length > 0 ? extractedSources : undefined,
-          sourcesCount: sourcesCount > 0 ? sourcesCount : undefined
+      // If all methods failed, provide a helpful error message
+      if (!finalResponse) {
+        finalResponse = {
+          content: `I apologize, but I'm having trouble accessing my knowledge base right now. Here are some things you can try:
+
+1. **Check your connection** - Make sure you have a stable internet connection
+2. **Rephrase your question** - Try asking in a different way or be more specific
+3. **Specify the subject** - Make sure you've selected the correct subject (${subject})
+4. **Try again later** - The service might be temporarily unavailable
+
+If the problem persists, please contact support. I'm here to help you learn!`,
+          sources: [],
+          metadata: {
+            error_fallback: true,
+            confidence: 0.1,
+            all_methods_failed: true
+          }
         };
-        
-        setMessages(prev => [...prev, aiMessage]);
-        
-        // Step 4: Save to memory for future use
-        const responseMetadata = response.ai_message.metadata as any || {};
+        responseSource = 'error_fallback';
+        confidence = 0.1;
+      }
+
+      // Create AI message
+      const aiMessage: Message = {
+        id: `ai-${Date.now()}`,
+        role: 'assistant',
+        content: finalResponse.content,
+        subject: subject,
+        created_at: new Date().toISOString(),
+        sources: finalResponse.sources?.length > 0 ? finalResponse.sources : undefined,
+        sourcesCount: finalResponse.sources?.length || 0,
+        fromMemory: responseSource === 'memory',
+        metadata: {
+          ...finalResponse.metadata,
+          response_source: responseSource,
+          final_confidence: confidence,
+          parallel_processing: true,
+          processing_timestamp: new Date().toISOString()
+        }
+      };
+
+      setMessages(prev => [...prev, aiMessage]);
+
+      // Save to memory for future use (only if not from memory and has good confidence)
+      if (responseSource !== 'memory' && confidence > 0.5) {
         const memoryId = await saveToMemory(
           questionText,
           aiMessage.content,
-          extractedSources,
+          finalResponse.sources,
           {
-            rag_used: responseMetadata.rag_used,
-            confidence: responseMetadata.confidence,
-            fallback_to_direct: responseMetadata.fallback_to_direct,
-            note: responseMetadata.note
+            response_source: responseSource,
+            confidence: confidence,
+            rag_used: finalResponse.metadata.rag_used,
+            fallback_to_direct: finalResponse.metadata.fallback_to_direct
           }
         );
         
         if (memoryId) {
-          // Update the message with memory ID
           setMessages(prev => prev.map(msg => 
             msg.id === aiMessage.id 
               ? { ...msg, memoryId }
               : msg
           ));
         }
-        
-        // Translate AI response if needed
-        if (targetLanguage !== 'en') {
-          try {
-            const translateResponse = await api.translation.translate({
-              text: aiMessage.content,
-              source_language: 'en',
-              target_language: targetLanguage
-            });
-            if (translateResponse.translated_text) {
-              setMessages(prev => prev.map(msg => 
-                msg.id === aiMessage.id 
-                  ? { ...msg, content: translateResponse.translated_text, metadata: { ...msg.metadata, translated: true } }
-                  : msg
-              ));
-            }
-          } catch (e) {
-            console.error('Translation error:', e);
+      }
+
+      // Update session in localStorage
+      const sessions = JSON.parse(localStorage.getItem('ai-tutor-sessions') || '[]');
+      const sessionIndex = sessions.findIndex((s: any) => s.id === currentSession.id);
+      if (sessionIndex !== -1) {
+        sessions[sessionIndex].last_message_at = new Date().toISOString();
+        localStorage.setItem('ai-tutor-sessions', JSON.stringify(sessions));
+      }
+
+      // Save messages to localStorage
+      const existingMessages = JSON.parse(localStorage.getItem(`ai-tutor-messages-${currentSession.id}`) || '[]');
+      existingMessages.push(userMessage, aiMessage);
+      localStorage.setItem(`ai-tutor-messages-${currentSession.id}`, JSON.stringify(existingMessages));
+
+      // Translate AI response if needed
+      if (targetLanguage !== 'en') {
+        try {
+          const translateResponse = await api.translation.translate({
+            text: aiMessage.content,
+            source_language: 'en',
+            target_language: targetLanguage
+          });
+          if (translateResponse.translated_text) {
+            setMessages(prev => prev.map(msg => 
+              msg.id === aiMessage.id 
+                ? { ...msg, content: translateResponse.translated_text, metadata: { ...msg.metadata, translated: true } }
+                : msg
+            ));
           }
+        } catch (e) {
+          console.error('Translation error:', e);
         }
-        
-        // Text-to-speech if enabled
-        if (ttsEnabled && synthRef.current) {
-          const textToSpeak = targetLanguage !== 'en' && aiMessage.metadata?.translated 
-            ? aiMessage.content 
-            : aiMessage.content;
-          speakText(textToSpeak, targetLanguage);
-        }
+      }
+      
+      // Text-to-speech if enabled
+      if (ttsEnabled && synthRef.current) {
+        const textToSpeak = targetLanguage !== 'en' && aiMessage.metadata?.translated 
+          ? aiMessage.content 
+          : aiMessage.content;
+        speakText(textToSpeak, targetLanguage);
       }
 
       fetchSessions();
     } catch (error: any) {
+      console.error('Error in handleSend:', error);
       toast({
         title: 'Error',
         description: error.message || 'Failed to send message',
@@ -741,34 +904,81 @@ export default function AITutorPage() {
           </div>
         </div>
 
-        {/* Memory Panel */}
+        {/* Enhanced Memory Panel */}
         {showMemoryPanel && (
           <div className="p-4 border-b bg-muted/20">
-            <div className="flex items-center gap-2 mb-3">
-              <Database className="h-4 w-4 text-primary" />
-              <span className="text-sm font-medium">Memory ({memoryItems.length})</span>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Database className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium">Memory ({memoryItems.length})</span>
+              </div>
+              <Badge variant="outline" className="text-xs">
+                Enhanced Search
+              </Badge>
             </div>
-            <ScrollArea className="h-32">
+            <ScrollArea className="h-40">
               <div className="space-y-2">
-                {memoryItems.slice(0, 5).map((item) => (
-                  <div
-                    key={item.id}
-                    className="p-2 rounded-lg bg-background border text-xs cursor-pointer hover:bg-muted/50"
-                    onClick={() => {
-                      setInput(item.content.question);
-                      setShowMemoryPanel(false);
-                    }}
-                  >
-                    <p className="font-medium truncate">{item.title}</p>
-                    <p className="text-muted-foreground text-xs">
-                      {formatDate(item.created_at)} • {item.subject}
+                {memoryItems.slice(0, 8).map((item) => {
+                  const usageCount = item.metadata?.usage_count || 0;
+                  const lastUsed = item.metadata?.last_used;
+                  
+                  return (
+                    <div
+                      key={item.id}
+                      className="p-2 rounded-lg bg-background border text-xs cursor-pointer hover:bg-muted/50 transition-colors"
+                      onClick={() => {
+                        setInput(item.content.question);
+                        setShowMemoryPanel(false);
+                      }}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate">{item.title}</p>
+                          <p className="text-muted-foreground text-xs">
+                            {formatDate(item.created_at)} • {item.subject}
+                          </p>
+                          {lastUsed && (
+                            <p className="text-muted-foreground text-xs">
+                              Last used: {formatDate(lastUsed)}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex flex-col items-end gap-1">
+                          {usageCount > 0 && (
+                            <Badge variant="secondary" className="text-xs h-4 px-1">
+                              {usageCount}x
+                            </Badge>
+                          )}
+                          <div className="flex items-center gap-1">
+                            {item.content.sources && item.content.sources.length > 0 && (
+                              <BookMarked className="h-3 w-3 text-green-600" />
+                            )}
+                            {item.metadata?.response_source === 'memory' && (
+                              <Database className="h-3 w-3 text-blue-600" />
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                {memoryItems.length === 0 && (
+                  <div className="text-center py-6">
+                    <Database className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
+                    <p className="text-xs text-muted-foreground">
+                      No saved conversations yet
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Your questions and answers will be automatically saved for quick access
                     </p>
                   </div>
-                ))}
-                {memoryItems.length === 0 && (
-                  <p className="text-xs text-muted-foreground text-center py-4">
-                    No saved conversations yet
-                  </p>
+                )}
+                {memoryItems.length > 8 && (
+                  <div className="text-center py-2">
+                    <p className="text-xs text-muted-foreground">
+                      +{memoryItems.length - 8} more conversations
+                    </p>
+                  </div>
                 )}
               </div>
             </ScrollArea>
@@ -940,11 +1150,58 @@ export default function AITutorPage() {
                             </div>
                           )}
                           
-                          {message.role === 'assistant' && message.metadata?.fallback_to_direct && (
-                            <div className="mb-2 p-2 bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800 rounded-lg">
-                              <p className="text-xs text-orange-700 dark:text-orange-300 flex items-center gap-1.5">
-                                <Sparkles className="h-3 w-3" />
-                                <span className="font-medium">General Knowledge Response:</span> This answer is based on general knowledge as the specific topic wasn't found in the uploaded curriculum materials.
+                          {message.role === 'assistant' && message.metadata?.response_source && (
+                            <div className={cn(
+                              "mb-2 p-2 border rounded-lg",
+                              message.metadata.response_source === 'memory' && "bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800",
+                              message.metadata.response_source === 'rag' && "bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800",
+                              message.metadata.response_source === 'direct' && "bg-orange-50 dark:bg-orange-950/20 border-orange-200 dark:border-orange-800",
+                              message.metadata.response_source === 'error_fallback' && "bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800"
+                            )}>
+                              <p className={cn(
+                                "text-xs flex items-center gap-1.5",
+                                message.metadata.response_source === 'memory' && "text-blue-700 dark:text-blue-300",
+                                message.metadata.response_source === 'rag' && "text-green-700 dark:text-green-300",
+                                message.metadata.response_source === 'direct' && "text-orange-700 dark:text-orange-300",
+                                message.metadata.response_source === 'error_fallback' && "text-red-700 dark:text-red-300"
+                              )}>
+                                {message.metadata.response_source === 'memory' && (
+                                  <>
+                                    <Database className="h-3 w-3" />
+                                    <span className="font-medium">From Memory:</span> Found similar question from {formatDate(message.metadata.memory_created_at || '')}
+                                  </>
+                                )}
+                                {message.metadata.response_source === 'rag' && (
+                                  <>
+                                    <BookMarked className="h-3 w-3" />
+                                    <span className="font-medium">Curriculum Match:</span> 
+                                    {message.metadata.offline_mode ? 'Enhanced offline knowledge' : 'Found in uploaded materials'}
+                                    {message.metadata.final_confidence && (
+                                      <span className="ml-1">({Math.round(message.metadata.final_confidence * 100)}% confidence)</span>
+                                    )}
+                                  </>
+                                )}
+                                {message.metadata.response_source === 'direct' && (
+                                  <>
+                                    <Brain className="h-3 w-3" />
+                                    <span className="font-medium">General Knowledge:</span> Based on general academic knowledge
+                                  </>
+                                )}
+                                {message.metadata.response_source === 'error_fallback' && (
+                                  <>
+                                    <AlertCircle className="h-3 w-3" />
+                                    <span className="font-medium">Service Issue:</span> Using fallback response
+                                  </>
+                                )}
+                              </p>
+                            </div>
+                          )}
+                          
+                          {message.role === 'assistant' && message.metadata?.parallel_processing && (
+                            <div className="mb-2 p-2 bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 rounded-lg">
+                              <p className="text-xs text-purple-700 dark:text-purple-300 flex items-center gap-1.5">
+                                <TrendingUp className="h-3 w-3" />
+                                <span className="font-medium">Enhanced Processing:</span> Used parallel memory, RAG, and AI analysis for best response
                               </p>
                             </div>
                           )}
@@ -1026,12 +1283,26 @@ export default function AITutorPage() {
                         <Bot className="h-4 w-4" />
                       </AvatarFallback>
                     </Avatar>
-                    <div className="bg-muted rounded-2xl px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        <span className="text-sm">
-                          {checkingMemory ? 'Checking memory...' : 'Thinking...'}
-                        </span>
+                    <div className="bg-muted rounded-2xl px-4 py-3 min-w-[200px]">
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                          <span className="text-sm font-medium">Processing your question...</span>
+                        </div>
+                        <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+                          <div className="flex items-center gap-1.5">
+                            <Database className="h-3 w-3" />
+                            <span>Searching memory</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <BookMarked className="h-3 w-3" />
+                            <span>Analyzing curriculum</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <Brain className="h-3 w-3" />
+                            <span>Generating response</span>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1074,9 +1345,21 @@ export default function AITutorPage() {
                 </div>
               </div>
               <div className="flex items-center justify-between mt-2">
-                <p className="text-xs text-muted-foreground">
-                  AI can make mistakes. Check important info. • Memory: {memoryItems.length} saved conversations
-                </p>
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  <span>Enhanced AI with parallel processing</span>
+                  <div className="flex items-center gap-1">
+                    <Database className="h-3 w-3" />
+                    <span>{memoryItems.length} memories</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <BookMarked className="h-3 w-3" />
+                    <span>RAG enabled</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Brain className="h-3 w-3" />
+                    <span>AI fallback</span>
+                  </div>
+                </div>
                 <Select value={targetLanguage} onValueChange={setTargetLanguage}>
                   <SelectTrigger className="h-7 w-28 text-xs">
                     <SelectValue />

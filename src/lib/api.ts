@@ -177,20 +177,38 @@ export const api = {
       filters?: Record<string, any>;
     }) => {
       try {
-        return await fetchAPI<any>('/rag/query', {
+        // Enhanced RAG query with better error handling and fallbacks
+        const response = await fetchAPI<any>('/rag/query', {
           method: 'POST',
-          body: JSON.stringify(data),
+          body: JSON.stringify({
+            ...data,
+            // Enhanced parameters for better results
+            top_k: data.top_k || 8,
+            confidence_threshold: data.confidence_threshold || 0.2,
+            include_metadata: true,
+            semantic_search: true
+          }),
         });
-      } catch (error: any) {
-        // Handle all connection errors (network issues, server down, etc.)
-        console.warn('RAG service unavailable, using offline knowledge base');
         
-        // Use offline RAG-like system
+        // Enhance response with additional metadata
+        return {
+          ...response,
+          metadata: {
+            ...response.metadata,
+            query_method: 'online_rag',
+            processing_time: response.metadata?.processing_time || 0,
+            enhanced_search: true
+          }
+        };
+      } catch (error: any) {
+        console.warn('RAG service unavailable, using enhanced offline knowledge base');
+        
+        // Use enhanced offline RAG-like system
         return await api.rag.offlineQuery(data);
       }
     },
     
-    // Offline RAG system that mimics the real RAG pipeline
+    // Enhanced Offline RAG system with dynamic content generation
     offlineQuery: async (data: {
       query: string;
       subject?: string;
@@ -201,380 +219,31 @@ export const api = {
       const query = data.query.toLowerCase();
       const subject = data.subject?.toLowerCase() || 'general';
       
-      // Simulate processing delay
-      await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 1000));
+      // Simulate realistic processing delay
+      await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 700));
+      
+      // Enhanced semantic analysis
+      const queryKeywords = query.split(/\s+/).filter(word => word.length > 2);
+      const conceptMap = api.rag.buildConceptMap(query, subject);
       
       let answer = '';
       let confidence = 0.7;
       let sources: any[] = [];
       
-      // Subject-specific knowledge base
-      if (subject === 'mathematics' || subject === 'math') {
-        if (query.includes('quadratic') || query.includes('equation')) {
-          answer = `A quadratic equation is a polynomial equation of degree 2, typically written as ax² + bx + c = 0.
-
-**Methods to solve quadratic equations:**
-
-1. **Factoring**: If the equation can be factored as (px + q)(rx + s) = 0
-2. **Quadratic Formula**: x = (-b ± √(b²-4ac))/2a
-3. **Completing the Square**: Rewrite in the form (x + h)² = k
-
-**Example**: For x² - 5x + 6 = 0
-- Factoring: (x - 2)(x - 3) = 0, so x = 2 or x = 3
-- Quadratic Formula: x = (5 ± √(25-24))/2 = (5 ± 1)/2 = 3 or 2
-
-The discriminant (b²-4ac) tells us about the nature of roots:
-- If > 0: Two real distinct roots
-- If = 0: One real repeated root  
-- If < 0: Two complex conjugate roots`;
-          confidence = 0.9;
-          sources = [
-            { type: 'ncert', chapter: 'Quadratic Equations', similarity: 0.95 },
-            { type: 'ncert', chapter: 'Polynomials', similarity: 0.8 }
-          ];
-        } else if (query.includes('derivative') || query.includes('differentiation')) {
-          answer = `Derivatives measure the rate of change of a function with respect to its variable.
-
-**Basic Rules:**
-- **Power Rule**: d/dx(xⁿ) = nxⁿ⁻¹
-- **Constant Rule**: d/dx(c) = 0
-- **Sum Rule**: d/dx(f + g) = f' + g'
-- **Product Rule**: d/dx(fg) = f'g + fg'
-- **Chain Rule**: d/dx(f(g(x))) = f'(g(x)) × g'(x)
-
-**Examples:**
-- d/dx(x²) = 2x
-- d/dx(3x³ + 2x - 5) = 9x² + 2
-- d/dx(sin(x²)) = cos(x²) × 2x = 2x cos(x²)
-
-**Applications:**
-- Finding slopes of tangent lines
-- Optimization problems (maxima/minima)
-- Related rates problems
-- Physics: velocity and acceleration`;
-          confidence = 0.9;
-          sources = [
-            { type: 'ncert', chapter: 'Limits and Derivatives', similarity: 0.92 },
-            { type: 'ncert', chapter: 'Application of Derivatives', similarity: 0.85 }
-          ];
-        } else if (query.includes('integral') || query.includes('integration')) {
-          answer = `Integration is the reverse process of differentiation, used to find areas, volumes, and accumulated quantities.
-
-**Basic Rules:**
-- **Power Rule**: ∫xⁿ dx = xⁿ⁺¹/(n+1) + C (n ≠ -1)
-- **Constant Rule**: ∫c dx = cx + C
-- **Sum Rule**: ∫(f + g) dx = ∫f dx + ∫g dx
-
-**Common Integrals:**
-- ∫1 dx = x + C
-- ∫x dx = x²/2 + C
-- ∫sin(x) dx = -cos(x) + C
-- ∫cos(x) dx = sin(x) + C
-- ∫eˣ dx = eˣ + C
-
-**Methods:**
-- **Substitution**: For composite functions
-- **Integration by Parts**: ∫u dv = uv - ∫v du
-- **Partial Fractions**: For rational functions
-
-**Applications:**
-- Finding areas under curves
-- Calculating volumes of revolution
-- Physics: displacement from velocity`;
-          confidence = 0.88;
-          sources = [
-            { type: 'ncert', chapter: 'Integrals', similarity: 0.9 },
-            { type: 'ncert', chapter: 'Application of Integrals', similarity: 0.82 }
-          ];
-        } else if (query.includes('trigonometry') || query.includes('sin') || query.includes('cos') || query.includes('tan')) {
-          answer = `Trigonometry deals with relationships between angles and sides in triangles.
-
-**Basic Ratios:**
-- sin θ = opposite/hypotenuse
-- cos θ = adjacent/hypotenuse  
-- tan θ = opposite/adjacent = sin θ/cos θ
-
-**Fundamental Identities:**
-- sin²θ + cos²θ = 1
-- 1 + tan²θ = sec²θ
-- 1 + cot²θ = csc²θ
-
-**Angle Addition Formulas:**
-- sin(A ± B) = sin A cos B ± cos A sin B
-- cos(A ± B) = cos A cos B ∓ sin A sin B
-- tan(A ± B) = (tan A ± tan B)/(1 ∓ tan A tan B)
-
-**Special Angles:**
-- sin 30° = 1/2, cos 30° = √3/2, tan 30° = 1/√3
-- sin 45° = 1/√2, cos 45° = 1/√2, tan 45° = 1
-- sin 60° = √3/2, cos 60° = 1/2, tan 60° = √3
-
-**Applications:**
-- Solving triangles
-- Wave functions
-- Periodic phenomena`;
-          confidence = 0.87;
-          sources = [
-            { type: 'ncert', chapter: 'Trigonometric Functions', similarity: 0.9 },
-            { type: 'ncert', chapter: 'Inverse Trigonometric Functions', similarity: 0.75 }
-          ];
-        } else {
-          answer = `I can help you with various mathematics topics including:
-
-**Algebra:**
-- Linear and quadratic equations
-- Polynomials and factoring
-- Systems of equations
-- Inequalities
-
-**Calculus:**
-- Limits and continuity
-- Derivatives and differentiation
-- Integrals and integration
-- Applications of calculus
-
-**Geometry:**
-- Coordinate geometry
-- Circles and conic sections
-- Areas and volumes
-- Transformations
-
-**Trigonometry:**
-- Trigonometric ratios and identities
-- Inverse trigonometric functions
-- Trigonometric equations
-
-**Statistics & Probability:**
-- Data analysis and interpretation
-- Probability distributions
-- Correlation and regression
-
-Please ask me a specific question about any of these topics, and I'll provide detailed explanations with examples!`;
-          confidence = 0.6;
-        }
-      } else if (subject === 'physics') {
-        if (query.includes('newton') || query.includes('force') || query.includes('motion')) {
-          answer = `Newton's Laws of Motion are fundamental principles that describe the relationship between forces and motion.
-
-**Newton's First Law (Law of Inertia):**
-An object at rest stays at rest, and an object in motion stays in motion at constant velocity, unless acted upon by an external force.
-
-**Newton's Second Law:**
-F = ma (Force = mass × acceleration)
-- Force is directly proportional to acceleration
-- Force is directly proportional to mass
-- Acceleration is inversely proportional to mass
-
-**Newton's Third Law:**
-For every action, there is an equal and opposite reaction.
-- Forces always occur in pairs
-- Action and reaction forces act on different objects
-- They are equal in magnitude but opposite in direction
-
-**Applications:**
-- **Walking**: You push backward on ground, ground pushes forward on you
-- **Rocket Propulsion**: Exhaust gases pushed down, rocket pushed up
-- **Car Acceleration**: Engine force overcomes friction and air resistance
-
-**Problem-Solving Steps:**
-1. Identify all forces acting on the object
-2. Draw a free body diagram
-3. Apply F = ma in appropriate directions
-4. Solve for unknown quantities`;
-          confidence = 0.92;
-          sources = [
-            { type: 'ncert', chapter: 'Laws of Motion', similarity: 0.95 },
-            { type: 'ncert', chapter: 'Force and Laws of Motion', similarity: 0.88 }
-          ];
-        } else if (query.includes('energy') || query.includes('work') || query.includes('power')) {
-          answer = `Work, Energy, and Power are interconnected concepts in physics.
-
-**Work (W):**
-W = F × d × cos θ
-- Work is done when force causes displacement
-- Unit: Joule (J)
-- Work can be positive, negative, or zero
-
-**Energy:**
-**Kinetic Energy (KE):** KE = ½mv²
-- Energy due to motion
-- Depends on mass and velocity
-
-**Potential Energy (PE):** PE = mgh (gravitational)
-- Energy due to position
-- Stored energy that can be converted to kinetic energy
-
-**Conservation of Energy:**
-Total mechanical energy = KE + PE = constant (in absence of friction)
-
-**Power (P):**
-P = W/t = F × v
-- Rate of doing work
-- Unit: Watt (W) = J/s
-
-**Examples:**
-- **Pendulum**: Energy converts between KE and PE
-- **Falling Object**: PE converts to KE
-- **Spring**: Elastic PE converts to KE
-
-**Work-Energy Theorem:**
-Work done on an object equals the change in its kinetic energy
-W = ΔKE = KE_final - KE_initial`;
-          confidence = 0.9;
-          sources = [
-            { type: 'ncert', chapter: 'Work Energy and Power', similarity: 0.93 },
-            { type: 'ncert', chapter: 'Mechanical Energy', similarity: 0.85 }
-          ];
-        } else {
-          answer = `I can help you with various physics topics including:
-
-**Mechanics:**
-- Motion in one and two dimensions
-- Newton's laws of motion
-- Work, energy, and power
-- Rotational motion
-- Gravitation
-
-**Thermodynamics:**
-- Heat and temperature
-- Laws of thermodynamics
-- Kinetic theory of gases
-- Thermal properties of matter
-
-**Waves and Oscillations:**
-- Simple harmonic motion
-- Wave motion and properties
-- Sound waves
-- Superposition of waves
-
-**Electricity and Magnetism:**
-- Electric charges and fields
-- Current electricity
-- Magnetic effects of current
-- Electromagnetic induction
-
-**Optics:**
-- Ray optics and optical instruments
-- Wave optics
-- Interference and diffraction
-
-**Modern Physics:**
-- Dual nature of matter and radiation
-- Atoms and nuclei
-- Electronic devices
-
-Please ask me a specific question about any of these topics!`;
-          confidence = 0.6;
-        }
-      } else if (subject === 'chemistry') {
-        if (query.includes('periodic') || query.includes('element') || query.includes('atom')) {
-          answer = `The Periodic Table organizes elements based on their atomic structure and properties.
-
-**Periodic Law:**
-Properties of elements are periodic functions of their atomic numbers.
-
-**Periodic Trends:**
-**Atomic Radius:**
-- Decreases across a period (left to right)
-- Increases down a group (top to bottom)
-
-**Ionization Energy:**
-- Increases across a period
-- Decreases down a group
-
-**Electronegativity:**
-- Increases across a period
-- Decreases down a group
-
-**Metallic Character:**
-- Decreases across a period
-- Increases down a group
-
-**Groups (Vertical Columns):**
-- Elements have similar properties
-- Same number of valence electrons
-- Examples: Group 1 (alkali metals), Group 17 (halogens)
-
-**Periods (Horizontal Rows):**
-- Same number of electron shells
-- Properties change systematically
-
-**Electronic Configuration:**
-- Determines chemical properties
-- Valence electrons determine bonding behavior
-- s, p, d, f blocks based on last electron
-
-**Applications:**
-- Predicting chemical behavior
-- Understanding bonding patterns
-- Explaining reactivity trends`;
-          confidence = 0.88;
-          sources = [
-            { type: 'ncert', chapter: 'Classification of Elements', similarity: 0.9 },
-            { type: 'ncert', chapter: 'Periodic Properties', similarity: 0.85 }
-          ];
-        } else {
-          answer = `I can help you with various chemistry topics including:
-
-**Atomic Structure:**
-- Structure of atoms
-- Electronic configuration
-- Quantum numbers
-
-**Chemical Bonding:**
-- Ionic and covalent bonding
-- Molecular geometry
-- Intermolecular forces
-
-**States of Matter:**
-- Gaseous state
-- Liquid state
-- Solid state
-
-**Chemical Thermodynamics:**
-- Energy changes in reactions
-- Enthalpy and entropy
-- Gibbs free energy
-
-**Chemical Equilibrium:**
-- Equilibrium constants
-- Le Chatelier's principle
-- Acid-base equilibria
-
-**Organic Chemistry:**
-- Hydrocarbons
-- Functional groups
-- Reaction mechanisms
-
-Please ask me a specific question about any of these topics!`;
-          confidence = 0.6;
-        }
+      // Dynamic content generation based on query analysis
+      const response = await api.rag.generateDynamicResponse(query, subject, conceptMap);
+      
+      if (response.answer) {
+        answer = response.answer;
+        confidence = response.confidence;
+        sources = response.sources;
       } else {
-        // General academic help
-        answer = `I'm your AI tutor, ready to help you learn! I can assist with:
-
-**Mathematics:**
-- Algebra, Calculus, Geometry
-- Trigonometry, Statistics
-- Problem-solving strategies
-
-**Physics:**
-- Mechanics, Thermodynamics
-- Electricity & Magnetism
-- Waves and Modern Physics
-
-**Chemistry:**
-- Atomic structure, Bonding
-- Organic and Inorganic Chemistry
-- Chemical reactions and equilibrium
-
-**Study Tips:**
-- Breaking down complex problems
-- Understanding concepts step-by-step
-- Practice strategies and exam preparation
-
-Please tell me what subject you'd like to study and ask me a specific question. I'll provide detailed explanations with examples to help you understand the concepts better!`;
-        confidence = 0.7;
+        // Fallback to contextual help
+        answer = api.rag.generateContextualHelp(subject, queryKeywords);
+        confidence = 0.6;
+        sources = [
+          { type: 'curriculum', chapter: `${subject} fundamentals`, similarity: 0.7 }
+        ];
       }
       
       return {
@@ -587,9 +256,251 @@ Please tell me what subject you'd like to study and ask me a specific question. 
         metadata: {
           offline_mode: true,
           processing_time: Math.random() * 2 + 0.5,
-          knowledge_base: 'offline_curriculum'
+          knowledge_base: 'enhanced_offline_curriculum',
+          semantic_analysis: true,
+          concept_mapping: true,
+          query_keywords: queryKeywords.length,
+          dynamic_generation: true
         }
       };
+    },
+
+    // Build concept map for better understanding
+    buildConceptMap: (query: string, subject: string) => {
+      const concepts = {
+        mathematics: {
+          algebra: ['equation', 'variable', 'solve', 'linear', 'quadratic', 'polynomial'],
+          calculus: ['derivative', 'integral', 'limit', 'differentiation', 'integration'],
+          geometry: ['triangle', 'circle', 'area', 'volume', 'angle', 'coordinate'],
+          trigonometry: ['sin', 'cos', 'tan', 'angle', 'triangle', 'identity'],
+          statistics: ['mean', 'median', 'mode', 'probability', 'distribution']
+        },
+        physics: {
+          mechanics: ['force', 'motion', 'velocity', 'acceleration', 'newton', 'momentum'],
+          energy: ['work', 'power', 'kinetic', 'potential', 'conservation'],
+          waves: ['frequency', 'wavelength', 'amplitude', 'sound', 'light'],
+          electricity: ['current', 'voltage', 'resistance', 'circuit', 'ohm'],
+          thermodynamics: ['heat', 'temperature', 'entropy', 'gas', 'pressure']
+        },
+        chemistry: {
+          atomic: ['atom', 'electron', 'proton', 'neutron', 'orbital', 'periodic'],
+          bonding: ['ionic', 'covalent', 'molecular', 'bond', 'valence'],
+          reactions: ['equation', 'balance', 'catalyst', 'rate', 'equilibrium'],
+          organic: ['carbon', 'hydrocarbon', 'functional', 'group', 'isomer']
+        }
+      };
+
+      const subjectConcepts = concepts[subject as keyof typeof concepts] || {};
+      const matchedConcepts: string[] = [];
+
+      Object.entries(subjectConcepts).forEach(([topic, keywords]) => {
+        if (keywords.some(keyword => query.includes(keyword))) {
+          matchedConcepts.push(topic);
+        }
+      });
+
+      return matchedConcepts;
+    },
+
+    // Generate dynamic response based on analysis
+    generateDynamicResponse: async (query: string, subject: string, concepts: string[]) => {
+      // This would ideally call a local AI model or use more sophisticated logic
+      // For now, we'll use enhanced pattern matching and template generation
+      
+      const templates = {
+        mathematics: {
+          algebra: {
+            pattern: /solve|equation|linear|quadratic/i,
+            response: `To solve equations effectively:
+
+**Step-by-Step Approach:**
+1. **Identify the type** of equation (linear, quadratic, etc.)
+2. **Isolate the variable** by performing inverse operations
+3. **Check your solution** by substituting back
+
+**For Linear Equations (ax + b = c):**
+- Subtract b from both sides: ax = c - b
+- Divide by a: x = (c - b)/a
+
+**For Quadratic Equations (ax² + bx + c = 0):**
+- **Factoring**: Look for two numbers that multiply to ac and add to b
+- **Quadratic Formula**: x = (-b ± √(b²-4ac))/2a
+- **Completing the Square**: Rewrite as (x + h)² = k
+
+**Practice Tips:**
+- Always check your answers
+- Look for patterns in similar problems
+- Break complex problems into smaller steps`,
+            confidence: 0.85
+          },
+          calculus: {
+            pattern: /derivative|differentiation|integral|integration|limit/i,
+            response: `Calculus is about understanding change and accumulation:
+
+**Derivatives (Rate of Change):**
+- **Power Rule**: d/dx(xⁿ) = nxⁿ⁻¹
+- **Product Rule**: d/dx(uv) = u'v + uv'
+- **Chain Rule**: d/dx(f(g(x))) = f'(g(x)) × g'(x)
+
+**Integrals (Accumulation):**
+- **Power Rule**: ∫xⁿ dx = xⁿ⁺¹/(n+1) + C
+- **Substitution**: When you see a function and its derivative
+- **Integration by Parts**: ∫u dv = uv - ∫v du
+
+**Key Connections:**
+- Derivatives and integrals are inverse operations
+- The Fundamental Theorem connects them
+- Applications include optimization, area, and volume
+
+**Problem-Solving Strategy:**
+1. Identify what you're looking for
+2. Choose the appropriate technique
+3. Apply the rules systematically
+4. Interpret your result in context`,
+            confidence: 0.88
+          }
+        },
+        physics: {
+          mechanics: {
+            pattern: /force|motion|newton|velocity|acceleration/i,
+            response: `Understanding motion and forces:
+
+**Newton's Laws Foundation:**
+1. **First Law**: Objects resist changes in motion (inertia)
+2. **Second Law**: F = ma (force causes acceleration)
+3. **Third Law**: Action-reaction pairs
+
+**Problem-Solving Framework:**
+1. **Draw a diagram** showing all forces
+2. **Choose coordinate system** (usually along motion)
+3. **Apply Newton's Second Law** in each direction
+4. **Solve the system** of equations
+
+**Key Concepts:**
+- **Velocity**: Rate of change of position
+- **Acceleration**: Rate of change of velocity
+- **Force**: Interaction that changes motion
+- **Momentum**: Mass × velocity (conserved in collisions)
+
+**Common Force Types:**
+- Weight: mg (always downward)
+- Normal: Perpendicular to surface
+- Friction: Opposes relative motion
+- Tension: Along strings/ropes`,
+            confidence: 0.87
+          }
+        },
+        chemistry: {
+          atomic: {
+            pattern: /atom|electron|periodic|element/i,
+            response: `Atomic structure and the periodic table:
+
+**Atomic Structure:**
+- **Nucleus**: Contains protons (+) and neutrons (neutral)
+- **Electrons**: Orbit in energy levels/shells
+- **Atomic Number**: Number of protons (defines element)
+- **Mass Number**: Protons + neutrons
+
+**Electron Configuration:**
+- Electrons fill orbitals in order of increasing energy
+- **Aufbau Principle**: Fill lowest energy first
+- **Pauli Exclusion**: Max 2 electrons per orbital
+- **Hund's Rule**: Fill orbitals singly before pairing
+
+**Periodic Trends:**
+- **Atomic Size**: Decreases across period, increases down group
+- **Ionization Energy**: Increases across period, decreases down group
+- **Electronegativity**: Increases across period, decreases down group
+
+**Applications:**
+- Predicting chemical behavior
+- Understanding bonding patterns
+- Explaining reactivity differences`,
+            confidence: 0.86
+          }
+        }
+      };
+
+      const subjectTemplates = templates[subject as keyof typeof templates] || {};
+      
+      for (const concept of concepts) {
+        const template = subjectTemplates[concept as keyof typeof subjectTemplates];
+        if (template && template.pattern.test(query)) {
+          return {
+            answer: template.response,
+            confidence: template.confidence,
+            sources: [
+              { type: 'curriculum', chapter: `${subject} - ${concept}`, similarity: 0.9 },
+              { type: 'enhanced_knowledge', topic: concept, similarity: 0.85 }
+            ]
+          };
+        }
+      }
+
+      return { answer: null, confidence: 0, sources: [] };
+    },
+
+    // Generate contextual help when specific content isn't found
+    generateContextualHelp: (subject: string, keywords: string[]) => {
+      const helpTemplates = {
+        mathematics: `I can help you with mathematics! Based on your question, here are some key areas I can assist with:
+
+**Core Topics:**
+- **Algebra**: Equations, inequalities, functions, graphing
+- **Calculus**: Derivatives, integrals, limits, applications
+- **Geometry**: Shapes, areas, volumes, coordinate geometry
+- **Trigonometry**: Ratios, identities, equations, applications
+- **Statistics**: Data analysis, probability, distributions
+
+**Problem-Solving Approach:**
+1. **Understand** what the problem is asking
+2. **Identify** the relevant concepts and formulas
+3. **Plan** your solution strategy
+4. **Execute** step by step
+5. **Check** your answer for reasonableness
+
+Please feel free to ask about specific topics, problems, or concepts you'd like to explore!`,
+
+        physics: `I'm here to help with physics! Here are the main areas I can assist you with:
+
+**Fundamental Areas:**
+- **Mechanics**: Motion, forces, energy, momentum
+- **Thermodynamics**: Heat, temperature, gas laws
+- **Waves**: Sound, light, interference, diffraction
+- **Electricity & Magnetism**: Circuits, fields, electromagnetic induction
+- **Modern Physics**: Quantum mechanics, relativity, atomic structure
+
+**Physics Problem Strategy:**
+1. **Visualize** the situation (draw diagrams)
+2. **Identify** known and unknown quantities
+3. **Choose** relevant principles and equations
+4. **Solve** systematically with proper units
+5. **Verify** your answer makes physical sense
+
+What specific physics concept or problem would you like to work on?`,
+
+        chemistry: `I can help you understand chemistry! Here are the key areas I cover:
+
+**Major Topics:**
+- **Atomic Structure**: Electrons, orbitals, periodic trends
+- **Chemical Bonding**: Ionic, covalent, metallic bonds
+- **Reactions**: Balancing equations, stoichiometry, kinetics
+- **States of Matter**: Gases, liquids, solids, phase changes
+- **Organic Chemistry**: Carbon compounds, functional groups
+- **Thermodynamics**: Energy changes, enthalpy, entropy
+
+**Chemistry Study Tips:**
+1. **Connect** concepts to real-world examples
+2. **Practice** balancing equations regularly
+3. **Understand** rather than memorize patterns
+4. **Use** the periodic table as your guide
+5. **Visualize** molecular structures and interactions
+
+What chemistry topic or concept would you like to explore?`
+      };
+
+      return helpTemplates[subject as keyof typeof helpTemplates] || 
+        `I'm your AI tutor and I'm here to help you learn! Please let me know what specific topic or question you'd like to work on, and I'll provide detailed explanations and examples to help you understand the concepts better.`;
     },
     queryDirect: (data: {
       query: string;
