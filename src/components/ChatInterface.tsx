@@ -8,7 +8,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
-import { Send, Bot, User, Loader2, Mic, MicOff, Languages, ChevronRight, ChevronLeft, Eye, BookOpen, X, Lightbulb, Download, Save, FileText, Brain, Calculator, ClipboardList, Calendar, BookMarked, Sparkles, Image as ImageIcon, TrendingUp } from 'lucide-react';
+import { Send, Bot, User, Loader2, Mic, MicOff, Languages, ChevronRight, ChevronLeft, Eye, BookOpen, X, Lightbulb, Download, Save, FileText, Brain, Calculator, ClipboardList, Calendar, BookMarked, Sparkles, Image as ImageIcon, TrendingUp, Maximize2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -521,14 +521,16 @@ export function ChatInterface({ userId, defaultSubject = 'mathematics' }: ChatIn
       let sourcesCount = 0;
       
       // Try to get sources from response metadata or RAG response
-      if (fullResponse.sources && Array.isArray(fullResponse.sources)) {
-        extractedSources = fullResponse.sources;
-        sourcesCount = fullResponse.sources.length;
-      } else if (fullResponse.metadata?.sources && Array.isArray(fullResponse.metadata.sources)) {
-        extractedSources = fullResponse.metadata.sources;
-        sourcesCount = fullResponse.metadata.sources.length;
-      } else if (fullResponse.metadata?.chunks_retrieved) {
-        sourcesCount = fullResponse.metadata.chunks_retrieved;
+      // Use type assertion to handle dynamic response structure
+      const responseWithSources = fullResponse as any;
+      if (responseWithSources.sources && Array.isArray(responseWithSources.sources)) {
+        extractedSources = responseWithSources.sources;
+        sourcesCount = responseWithSources.sources.length;
+      } else if (responseWithSources.metadata?.sources && Array.isArray(responseWithSources.metadata.sources)) {
+        extractedSources = responseWithSources.metadata.sources;
+        sourcesCount = responseWithSources.metadata.sources.length;
+      } else if (responseWithSources.metadata?.chunks_retrieved) {
+        sourcesCount = responseWithSources.metadata.chunks_retrieved;
       }
       
       // Parse sources from content if embedded
@@ -625,8 +627,8 @@ export function ChatInterface({ userId, defaultSubject = 'mathematics' }: ChatIn
               ...msg,
               content: answerContent || msg.content,
               answerData: normalizeAnswerData(fullResponse.answer),
-              wolframUsed: fullResponse.wolfram_used || false,
-              wolframResult: fullResponse.wolfram_result || undefined,
+              wolframUsed: (fullResponse as any).wolfram_used || false,
+              wolframResult: (fullResponse as any).wolfram_result || undefined,
               suggestedActions: suggestedActions,
               sources: extractedSources.length > 0 ? extractedSources : undefined,
               sourcesCount: sourcesCount > 0 ? sourcesCount : undefined
