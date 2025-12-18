@@ -37,6 +37,8 @@ import {
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import OfflineRAGIndicator from '@/components/OfflineRAGIndicator';
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -210,7 +212,7 @@ export default function EnhancedAITutorPage() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [currentSession, setCurrentSession] = useState<Session | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [sessionsEndpointAvailable, setSessionsEndpointAvailable] = useState<boolean | null>(null);
+
   const [fetchingSessions, setFetchingSessions] = useState(false);
   const [sessionCreateRetryCount, setSessionCreateRetryCount] = useState(0);
   const [input, setInput] = useState('');
@@ -239,6 +241,7 @@ export default function EnhancedAITutorPage() {
     description?: string;
   }>>>({});
   const [fetchingFormulas, setFetchingFormulas] = useState<Record<string, boolean>>({});
+  const [isOfflineMode, setIsOfflineMode] = useState(false);
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -248,7 +251,7 @@ export default function EnhancedAITutorPage() {
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const synthRef = useRef<SpeechSynthesis | null>(null);
-  const configErrorShownRef = useRef<boolean>(false);
+
 
   useEffect(() => {
     if (user?.id) {
@@ -282,11 +285,6 @@ export default function EnhancedAITutorPage() {
   const fetchSessions = async (force = false) => {
     if (!user?.id) return;
     
-    // If endpoint is known to be unavailable (503), skip unless forced
-    if (sessionsEndpointAvailable === false && !force) {
-      return;
-    }
-    
     // Prevent multiple simultaneous calls
     if (fetchingSessions) {
       return;
@@ -303,7 +301,6 @@ export default function EnhancedAITutorPage() {
         new Date(a.last_message_at || a.created_at).getTime()
       );
       setSessions(sortedSessions);
-      setSessionsEndpointAvailable(true);
       
       if (!currentSession) {
         const activeSession = sortedSessions.find((s: Session) => s.is_active);
@@ -314,98 +311,8 @@ export default function EnhancedAITutorPage() {
         }
       }
     } catch (error: any) {
-      // Handle errors gracefully
-      if (error.status === 503) {
-        // Service temporarily unavailable - check if retryable
-        const errorMsg = error.data?.error?.message || error.message || 'Service temporarily unavailable';
-        const isRetryable = error.data?.error?.retryable !== false;
-        
-        if (sessionsEndpointAvailable === null) {
-          console.warn(`AI Tutoring service temporarily unavailable: ${errorMsg}`);
-        }
-        
-        // Mark as unavailable but allow retry if retryable
-        if (!isRetryable) {
-          setSessionsEndpointAvailable(false);
-        }
-        setSessions([]);
-      } else if (error.status === 500) {
-        // Backend server error
-        const errorData = error.data || {};
-        const errorMsg = errorData.error?.message || errorData.detail || error.message || 'Backend service error';
-        const errorStr = typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg);
-        
-        // Detect Supabase configuration errors (check first as they're configuration issues)
-        const isSupabaseConfigError = errorStr.includes('supabase_url is required') ||
-                                     errorStr.includes('supabase_url') ||
-                                     errorStr.includes('SUPABASE_URL') ||
-                                     errorStr.includes('Invalid API key') || 
-                                     errorStr.includes('Supabase') ||
-                                     errorStr.includes('anon') ||
-                                     errorStr.includes('service_role') ||
-                                     errorStr.includes('API key') ||
-                                     errorStr.includes('authentication') ||
-                                     errorStr.includes('JSON could not be generated');
-        
-        // Detect Python syntax/indentation errors
-        const isPythonSyntaxError = errorStr.includes('unindent') || 
-                                   errorStr.includes('indentation') || 
-                                   errorStr.includes('IndentationError') ||
-                                   errorStr.includes('f-string') || 
-                                   errorStr.includes('backslash') ||
-                                   errorStr.includes('SyntaxError') ||
-                                   /\([^)]+\.py,\s*line\s*\d+\)/.test(errorStr);
-        
-        // Extract file and line number if available
-        const fileMatch = errorStr.match(/\(([^)]+\.py),\s*line\s*(\d+)\)/);
-        
-        // Only log and show toast once to avoid spam
-        if (sessionsEndpointAvailable === null && !configErrorShownRef.current) {
-          if (isSupabaseConfigError) {
-            if (errorStr.includes('supabase_url is required') || errorStr.includes('supabase_url')) {
-              const errorMessage = 'Backend configuration error: The backend is missing the Supabase URL environment variable (SUPABASE_URL). This is a backend configuration issue that needs to be fixed by the development team.';
-              console.warn('AI Tutoring service -', errorMessage);
-              configErrorShownRef.current = true;
-              toast({
-                title: 'Backend Configuration Error',
-                description: errorMessage,
-                variant: 'destructive',
-                duration: 8000
-              });
-            } else {
-              const errorMessage = 'Backend authentication error: The backend is using an invalid Supabase API key or missing configuration. This is a backend configuration issue.';
-              console.warn('AI Tutoring service -', errorMessage);
-              configErrorShownRef.current = true;
-              toast({
-                title: 'Backend Configuration Error',
-                description: errorMessage,
-                variant: 'destructive',
-                duration: 8000
-              });
-            }
-          } else if (isPythonSyntaxError) {
-            if (fileMatch) {
-              console.warn(`AI Tutoring service - backend code error detected in ${fileMatch[1]} (line ${fileMatch[2]}). This needs to be fixed in the backend.`);
-            } else {
-              console.warn('AI Tutoring service - backend code error detected. This needs to be fixed in the backend.');
-            }
-          } else {
-            console.warn('AI Tutoring service - backend error:', errorStr.substring(0, 200));
-          }
-        }
-        
-        // Don't mark as permanently unavailable for 500 errors - might be temporary
-        // Allow retries since backend might be fixed
-        setSessions([]);
-      } else if (error.status === 404) {
-        // Endpoint not found - should not happen with correct path, but handle gracefully
-        console.warn('AI Tutoring sessions endpoint not found');
-        setSessionsEndpointAvailable(false);
-        setSessions([]);
-      } else {
-        console.error('Error fetching sessions:', error);
-        setSessions([]);
-      }
+      console.error('Error fetching sessions:', error);
+      setSessions([]);
     } finally {
       setFetchingSessions(false);
     }
@@ -474,7 +381,6 @@ export default function EnhancedAITutorPage() {
       setCurrentSession(newSession);
       setMessages([]);
       setSessionCreateRetryCount(0);
-      setSessionsEndpointAvailable(true);
       
       toast({
         title: 'New Chat Created',
@@ -1033,6 +939,11 @@ export default function EnhancedAITutorPage() {
         subject: subject,
         message_type: 'text'
       });
+      
+      // Check if response is from offline mode
+      if (response.ai_message?.metadata?.offline_mode) {
+        setIsOfflineMode(true);
+      }
 
       // Check if RAG couldn't find content - fallback to direct Gemini query
       const content = response.ai_message?.content || '';
@@ -1126,6 +1037,13 @@ export default function EnhancedAITutorPage() {
 
       fetchSessions();
     } catch (error: any) {
+      console.error('Error in handleSend:', error);
+      
+      // If it's a network error, we're likely in offline mode
+      if (error.message?.includes('Failed to fetch') || error.message?.includes('ERR_CONNECTION_REFUSED')) {
+        setIsOfflineMode(true);
+      }
+      
       toast({
         title: 'Error',
         description: error.message || 'Failed to send message',
@@ -1686,12 +1604,7 @@ IMPORTANT: The "wolfram_query" field MUST be formatted exactly as it should be e
                 <p className="text-muted-foreground">
                   Create a new chat to begin learning with your AI tutor. Ask questions, get help with homework, or request explanations on any topic.
                 </p>
-                {sessionsEndpointAvailable === false && (
-                  <div className="p-3 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded-lg text-sm text-yellow-800 dark:text-yellow-200">
-                    <p className="font-medium">Service Temporarily Unavailable</p>
-                    <p className="text-xs mt-1">The AI Tutoring service is experiencing technical issues. Please try again in a moment.</p>
-                  </div>
-                )}
+
                 <Button onClick={createNewSession} disabled={loading} size="lg">
                   <Plus className="h-4 w-4 mr-2" />
                   New Chat
@@ -1701,6 +1614,9 @@ IMPORTANT: The "wolfram_query" field MUST be formatted exactly as it should be e
           ) : (
             <ScrollArea className="h-full">
               <div className="max-w-3xl mx-auto p-4 space-y-6">
+                {/* Offline Mode Indicator */}
+                <OfflineRAGIndicator isOffline={isOfflineMode} />
+                
                 {messages.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 space-y-4">
                     <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
@@ -2139,7 +2055,7 @@ IMPORTANT: The "wolfram_query" field MUST be formatted exactly as it should be e
                                   
                                   return (
                                     <div
-                                      key={idx}
+                                      key={`${source.type || 'content'}-${source.chapter || 'unknown'}-${idx}`}
                                       className="group relative flex items-start gap-2.5 p-2.5 rounded-lg bg-gradient-to-r from-background to-muted/30 border border-border/50 hover:border-primary/30 hover:shadow-sm transition-all duration-200"
                                     >
                                       <div className={`p-1.5 rounded-md ${sourceTypeColor} flex-shrink-0`}>

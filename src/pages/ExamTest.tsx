@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Clock, AlertCircle, Loader2, CheckCircle2 } from "lucide-react";
+import { Clock, AlertCircle, Loader2, CheckCircle2, Maximize } from "lucide-react";
 import { api } from "@/lib/api";
 import { ExamSet, TestSession } from "@/types/exam";
 import { useToast } from "@/hooks/use-toast";
@@ -32,7 +32,7 @@ const ExamTest = () => {
   const [questionsHidden, setQuestionsHidden] = useState(false);
 
   // Enable exam security (disable when test is completed)
-  const { violations, totalViolations, isFullscreen } = useExamSecurity(
+  const { violations, totalViolations, isFullscreen, requestFullscreen } = useExamSecurity(
     (violation) => {
       // Log violations to backend (optional)
       console.warn("Security violation detected:", violation);
@@ -321,6 +321,18 @@ const ExamTest = () => {
                 </span>
               </div>
               
+              {!isFullscreen && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={requestFullscreen}
+                  className="border-orange-500 text-orange-500 hover:bg-orange-500 hover:text-white"
+                >
+                  <Maximize className="h-4 w-4 mr-2" />
+                  Enter Fullscreen
+                </Button>
+              )}
+              
               <Button
                 variant="destructive"
                 onClick={() => setShowSubmitDialog(true)}
@@ -515,16 +527,16 @@ const ExamTest = () => {
             <AlertDialogTitle>Submit Exam?</AlertDialogTitle>
             <AlertDialogDescription>
               <div className="space-y-2">
-                <p>Are you sure you want to submit your exam?</p>
+                <div>Are you sure you want to submit your exam?</div>
                 <div className="flex items-center gap-2 text-sm">
                   <AlertCircle className="h-4 w-4" />
                   <span>
                     You have answered {answeredCount} out of {examSet.questions.length} questions
                   </span>
                 </div>
-                <p className="text-sm text-muted-foreground">
+                <div className="text-sm text-muted-foreground">
                   Once submitted, you cannot change your answers.
-                </p>
+                </div>
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>

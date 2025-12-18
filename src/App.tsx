@@ -36,6 +36,7 @@ import QuizTest from "./pages/QuizTest";
 import FocusTimer from "./pages/FocusTimer";
 import AITutoring from "./pages/AITutoring";
 import EnhancedAITutor from "./pages/EnhancedAITutor";
+import AITutorPage from "./pages/dashboard/student/ai-tutor";
 import TeacherTools from "./pages/TeacherTools";
 import TeacherStudentManagement from "./pages/TeacherStudentManagement";
 import TeacherPerformance from "./pages/TeacherPerformance";
@@ -54,9 +55,14 @@ import UserContentUpload from "./pages/UserContentUpload";
 import ContentDownloads from "./pages/ContentDownloads";
 import PYQPractice from "./pages/PYQPractice";
 import DrawInAir from "./pages/DrawInAir";
+import QuizCreatorPage from "./pages/QuizCreatorPage";
+import QuizPreviewPage from "./pages/QuizPreviewPage";
+import QuizSharePage from "./pages/QuizSharePage";
+import GlobalScreenLens from "./components/GlobalScreenLens";
 
 import SchoolManagement from "./pages/SchoolManagement";
 import NotFound from "./pages/NotFound";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 const queryClient = new QueryClient();
 
@@ -68,11 +74,12 @@ const App = () => (
         v7_relativeSplatPath: true,
       }}
     >
-      <AuthProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <Routes>
+      <ErrorBoundary>
+        <AuthProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
@@ -93,6 +100,7 @@ const App = () => (
             <Route path="/dashboard/student/exam/start/:examSetId" element={<ExamTest />} />
             <Route path="/dashboard/student/practice/pyq" element={<PYQPractice />} />
             <Route path="/dashboard/student/draw-in-air" element={<DrawInAir />} />
+            <Route path="/draw-in-air" element={<DrawInAir />} />
             <Route path="/dashboard/student/practice/pyq" element={<PYQPractice />} />
 
             <Route path="/dashboard/student/exam/results/:sessionId" element={<ExamResults />} />
@@ -103,7 +111,7 @@ const App = () => (
             <Route path="/dashboard/student/upload-content" element={<UserContentUpload />} />
             <Route path="/dashboard/student/focus" element={<FocusTimer />} />
             <Route path="/dashboard/student/ai-tutoring" element={<AITutoring />} />
-            <Route path="/dashboard/student/ai-tutor" element={<EnhancedAITutor />} />
+            <Route path="/dashboard/student/ai-tutor" element={<AITutorPage />} />
             <Route path="/dashboard/student/chat" element={<Chat />} />
             <Route path="/dashboard/teacher" element={<TeacherDashboard />} />
             <Route path="/dashboard/teacher/students" element={<TeacherStudentManagement />} />
@@ -117,6 +125,9 @@ const App = () => (
             <Route path="/dashboard/teacher/quizzes" element={<TeacherQuizManagement />} />
             <Route path="/dashboard/teacher/quizzes/create" element={<TeacherQuizCreation />} />
             <Route path="/dashboard/teacher/quizzes/:quizId" element={<TeacherQuizDetail />} />
+            <Route path="/quiz-creator" element={<QuizCreatorPage />} />
+            <Route path="/quiz-preview" element={<QuizPreviewPage />} />
+            <Route path="/quiz-share/:shareKey" element={<QuizSharePage />} />
             <Route path="/dashboard/teacher/tools" element={<TeacherTools />} />
             <Route path="/dashboard/teacher/ai-tutor-monitoring" element={<TeacherAITutorMonitoring />} />
             <Route path="/dashboard/teacher/notifications" element={<Notifications />} />
@@ -132,8 +143,12 @@ const App = () => (
             <Route path="/dashboard/admin/notifications/create" element={<CreateNotification />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
+          
+          {/* Global Screen Lens - Available on all pages for authenticated users */}
+          <GlobalScreenLens />
         </TooltipProvider>
       </AuthProvider>
+    </ErrorBoundary>
     </BrowserRouter>
   </QueryClientProvider>
 );

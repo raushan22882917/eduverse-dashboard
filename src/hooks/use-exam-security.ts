@@ -233,9 +233,9 @@ export const useExamSecurity = (
       onViolation?.(violation);
     };
 
-    // Request fullscreen on mount (only if enabled)
+    // Request fullscreen function (to be called by user interaction)
     const requestFullscreen = async () => {
-      if (!enabled) return;
+      if (!enabled) return false;
       
       try {
         const element = document.documentElement;
@@ -249,18 +249,18 @@ export const useExamSecurity = (
           await (element as any).msRequestFullscreen();
         }
         isFullscreenRef.current = true;
+        return true;
       } catch (error) {
-        console.error("Failed to enter fullscreen:", error);
+        console.warn("Failed to enter fullscreen:", error);
         toast({
-          variant: "destructive",
-          title: "Fullscreen Required",
-          description: "Please enable fullscreen mode to continue with the exam.",
+          title: "Fullscreen Recommended",
+          description: "For the best exam experience, please enable fullscreen mode by clicking the fullscreen button.",
         });
+        return false;
       }
     };
 
-    // Request fullscreen when component mounts
-    requestFullscreen();
+    // Don't automatically request fullscreen on mount - wait for user interaction
 
     // Add event listeners
     document.addEventListener("copy", handleCopy);
@@ -306,6 +306,31 @@ export const useExamSecurity = (
     violationCounts: violationCounts.current,
     totalViolations: violations.length,
     isFullscreen,
+    requestFullscreen: async () => {
+      if (!enabled) return false;
+      
+      try {
+        const element = document.documentElement;
+        if (element.requestFullscreen) {
+          await element.requestFullscreen();
+        } else if ((element as any).webkitRequestFullscreen) {
+          await (element as any).webkitRequestFullscreen();
+        } else if ((element as any).mozRequestFullScreen) {
+          await (element as any).mozRequestFullScreen();
+        } else if ((element as any).msRequestFullscreen) {
+          await (element as any).msRequestFullscreen();
+        }
+        isFullscreenRef.current = true;
+        return true;
+      } catch (error) {
+        console.warn("Failed to enter fullscreen:", error);
+        toast({
+          title: "Fullscreen Recommended",
+          description: "For the best exam experience, please enable fullscreen mode.",
+        });
+        return false;
+      }
+    },
   };
 };
 

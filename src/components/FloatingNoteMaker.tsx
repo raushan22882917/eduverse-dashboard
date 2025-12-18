@@ -23,10 +23,19 @@ interface FloatingNoteMakerProps {
   contentId?: string;
   subject?: string;
   onNoteSaved?: () => void;
+  forceOpen?: boolean;
+  onClose?: () => void;
 }
 
-export function FloatingNoteMaker({ userId, contentId, subject, onNoteSaved }: FloatingNoteMakerProps) {
+export function FloatingNoteMaker({ userId, contentId, subject, onNoteSaved, forceOpen, onClose }: FloatingNoteMakerProps) {
   const [isOpen, setIsOpen] = useState(false);
+  
+  // Handle force open
+  useEffect(() => {
+    if (forceOpen) {
+      setIsOpen(true);
+    }
+  }, [forceOpen]);
   const [isMinimized, setIsMinimized] = useState(false);
   const [notes, setNotes] = useState<Note[]>([]);
   const [currentNote, setCurrentNote] = useState("");
@@ -300,10 +309,11 @@ Enhanced note:`;
     return (
       <Button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary/80 z-50"
+        className="fixed bottom-6 right-6 h-16 w-16 rounded-full shadow-2xl bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 z-[9999] border-2 border-white animate-pulse"
         size="icon"
+        title="Open Notes Maker"
       >
-        <StickyNote className="h-6 w-6" />
+        <StickyNote className="h-8 w-8 text-white" />
       </Button>
     );
   }
@@ -329,7 +339,10 @@ Enhanced note:`;
               variant="ghost"
               size="icon"
               className="h-8 w-8"
-              onClick={() => setIsOpen(false)}
+              onClick={() => {
+                setIsOpen(false);
+                onClose?.();
+              }}
             >
               <X className="h-4 w-4" />
             </Button>
