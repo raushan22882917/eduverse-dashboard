@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS user_memory (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     metadata JSONB DEFAULT '{}'::jsonb
 );
-
+ 
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_user_memory_user_id ON user_memory(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_memory_type ON user_memory(type);
