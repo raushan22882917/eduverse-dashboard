@@ -234,25 +234,34 @@ export const api = {
       const response = await api.rag.generateDynamicResponse(query, subject, conceptMap);
       
       if (response.answer) {
-        answer = response.answer;
-        confidence = response.confidence;
-        sources = response.sources;
-      } else {
-        // Fallback to contextual help
-        answer = api.rag.generateContextualHelp(subject, queryKeywords);
-        confidence = 0.6;
-        sources = [
-          { type: 'curriculum', chapter: `${subject} fundamentals`, similarity: 0.7 }
-        ];
+        return {
+          answer: response.answer,
+          confidence: response.confidence,
+          sources: response.sources,
+          query: data.query,
+          subject: data.subject,
+          generated_text: response.answer,
+          metadata: {
+            offline_mode: true,
+            processing_time: Math.random() * 2 + 0.5,
+            knowledge_base: 'enhanced_offline_curriculum',
+            semantic_analysis: true,
+            concept_mapping: true,
+            query_keywords: queryKeywords.length,
+            dynamic_generation: true,
+            rag_match_found: true
+          }
+        };
       }
       
+      // No suitable response found from RAG pipeline
       return {
-        answer,
-        confidence,
-        sources,
+        answer: null,
+        confidence: 0,
+        sources: [],
         query: data.query,
         subject: data.subject,
-        generated_text: answer,
+        generated_text: null,
         metadata: {
           offline_mode: true,
           processing_time: Math.random() * 2 + 0.5,
@@ -260,7 +269,9 @@ export const api = {
           semantic_analysis: true,
           concept_mapping: true,
           query_keywords: queryKeywords.length,
-          dynamic_generation: true
+          dynamic_generation: true,
+          rag_match_found: false,
+          no_content_available: true
         }
       };
     },
@@ -294,7 +305,7 @@ export const api = {
       const matchedConcepts: string[] = [];
 
       Object.entries(subjectConcepts).forEach(([topic, keywords]) => {
-        if (keywords.some(keyword => query.includes(keyword))) {
+        if (Array.isArray(keywords) && keywords.some(keyword => query.includes(keyword))) {
           matchedConcepts.push(topic);
         }
       });
@@ -302,206 +313,14 @@ export const api = {
       return matchedConcepts;
     },
 
-    // Generate dynamic response based on analysis
+    // Generate dynamic response based on analysis - relies purely on RAG pipeline
     generateDynamicResponse: async (query: string, subject: string, concepts: string[]) => {
-      // This would ideally call a local AI model or use more sophisticated logic
-      // For now, we'll use enhanced pattern matching and template generation
-      
-      const templates = {
-        mathematics: {
-          algebra: {
-            pattern: /solve|equation|linear|quadratic/i,
-            response: `To solve equations effectively:
-
-**Step-by-Step Approach:**
-1. **Identify the type** of equation (linear, quadratic, etc.)
-2. **Isolate the variable** by performing inverse operations
-3. **Check your solution** by substituting back
-
-**For Linear Equations (ax + b = c):**
-- Subtract b from both sides: ax = c - b
-- Divide by a: x = (c - b)/a
-
-**For Quadratic Equations (ax² + bx + c = 0):**
-- **Factoring**: Look for two numbers that multiply to ac and add to b
-- **Quadratic Formula**: x = (-b ± √(b²-4ac))/2a
-- **Completing the Square**: Rewrite as (x + h)² = k
-
-**Practice Tips:**
-- Always check your answers
-- Look for patterns in similar problems
-- Break complex problems into smaller steps`,
-            confidence: 0.85
-          },
-          calculus: {
-            pattern: /derivative|differentiation|integral|integration|limit/i,
-            response: `Calculus is about understanding change and accumulation:
-
-**Derivatives (Rate of Change):**
-- **Power Rule**: d/dx(xⁿ) = nxⁿ⁻¹
-- **Product Rule**: d/dx(uv) = u'v + uv'
-- **Chain Rule**: d/dx(f(g(x))) = f'(g(x)) × g'(x)
-
-**Integrals (Accumulation):**
-- **Power Rule**: ∫xⁿ dx = xⁿ⁺¹/(n+1) + C
-- **Substitution**: When you see a function and its derivative
-- **Integration by Parts**: ∫u dv = uv - ∫v du
-
-**Key Connections:**
-- Derivatives and integrals are inverse operations
-- The Fundamental Theorem connects them
-- Applications include optimization, area, and volume
-
-**Problem-Solving Strategy:**
-1. Identify what you're looking for
-2. Choose the appropriate technique
-3. Apply the rules systematically
-4. Interpret your result in context`,
-            confidence: 0.88
-          }
-        },
-        physics: {
-          mechanics: {
-            pattern: /force|motion|newton|velocity|acceleration/i,
-            response: `Understanding motion and forces:
-
-**Newton's Laws Foundation:**
-1. **First Law**: Objects resist changes in motion (inertia)
-2. **Second Law**: F = ma (force causes acceleration)
-3. **Third Law**: Action-reaction pairs
-
-**Problem-Solving Framework:**
-1. **Draw a diagram** showing all forces
-2. **Choose coordinate system** (usually along motion)
-3. **Apply Newton's Second Law** in each direction
-4. **Solve the system** of equations
-
-**Key Concepts:**
-- **Velocity**: Rate of change of position
-- **Acceleration**: Rate of change of velocity
-- **Force**: Interaction that changes motion
-- **Momentum**: Mass × velocity (conserved in collisions)
-
-**Common Force Types:**
-- Weight: mg (always downward)
-- Normal: Perpendicular to surface
-- Friction: Opposes relative motion
-- Tension: Along strings/ropes`,
-            confidence: 0.87
-          }
-        },
-        chemistry: {
-          atomic: {
-            pattern: /atom|electron|periodic|element/i,
-            response: `Atomic structure and the periodic table:
-
-**Atomic Structure:**
-- **Nucleus**: Contains protons (+) and neutrons (neutral)
-- **Electrons**: Orbit in energy levels/shells
-- **Atomic Number**: Number of protons (defines element)
-- **Mass Number**: Protons + neutrons
-
-**Electron Configuration:**
-- Electrons fill orbitals in order of increasing energy
-- **Aufbau Principle**: Fill lowest energy first
-- **Pauli Exclusion**: Max 2 electrons per orbital
-- **Hund's Rule**: Fill orbitals singly before pairing
-
-**Periodic Trends:**
-- **Atomic Size**: Decreases across period, increases down group
-- **Ionization Energy**: Increases across period, decreases down group
-- **Electronegativity**: Increases across period, decreases down group
-
-**Applications:**
-- Predicting chemical behavior
-- Understanding bonding patterns
-- Explaining reactivity differences`,
-            confidence: 0.86
-          }
-        }
-      };
-
-      const subjectTemplates = templates[subject as keyof typeof templates] || {};
-      
-      for (const concept of concepts) {
-        const template = subjectTemplates[concept as keyof typeof subjectTemplates];
-        if (template && template.pattern.test(query)) {
-          return {
-            answer: template.response,
-            confidence: template.confidence,
-            sources: [
-              { type: 'curriculum', chapter: `${subject} - ${concept}`, similarity: 0.9 },
-              { type: 'enhanced_knowledge', topic: concept, similarity: 0.85 }
-            ]
-          };
-        }
-      }
-
+      // No hardcoded responses - return null to indicate RAG pipeline should be used
+      // This ensures all responses come from actual curriculum data or AI generation
       return { answer: null, confidence: 0, sources: [] };
     },
 
-    // Generate contextual help when specific content isn't found
-    generateContextualHelp: (subject: string, keywords: string[]) => {
-      const helpTemplates = {
-        mathematics: `I can help you with mathematics! Based on your question, here are some key areas I can assist with:
 
-**Core Topics:**
-- **Algebra**: Equations, inequalities, functions, graphing
-- **Calculus**: Derivatives, integrals, limits, applications
-- **Geometry**: Shapes, areas, volumes, coordinate geometry
-- **Trigonometry**: Ratios, identities, equations, applications
-- **Statistics**: Data analysis, probability, distributions
-
-**Problem-Solving Approach:**
-1. **Understand** what the problem is asking
-2. **Identify** the relevant concepts and formulas
-3. **Plan** your solution strategy
-4. **Execute** step by step
-5. **Check** your answer for reasonableness
-
-Please feel free to ask about specific topics, problems, or concepts you'd like to explore!`,
-
-        physics: `I'm here to help with physics! Here are the main areas I can assist you with:
-
-**Fundamental Areas:**
-- **Mechanics**: Motion, forces, energy, momentum
-- **Thermodynamics**: Heat, temperature, gas laws
-- **Waves**: Sound, light, interference, diffraction
-- **Electricity & Magnetism**: Circuits, fields, electromagnetic induction
-- **Modern Physics**: Quantum mechanics, relativity, atomic structure
-
-**Physics Problem Strategy:**
-1. **Visualize** the situation (draw diagrams)
-2. **Identify** known and unknown quantities
-3. **Choose** relevant principles and equations
-4. **Solve** systematically with proper units
-5. **Verify** your answer makes physical sense
-
-What specific physics concept or problem would you like to work on?`,
-
-        chemistry: `I can help you understand chemistry! Here are the key areas I cover:
-
-**Major Topics:**
-- **Atomic Structure**: Electrons, orbitals, periodic trends
-- **Chemical Bonding**: Ionic, covalent, metallic bonds
-- **Reactions**: Balancing equations, stoichiometry, kinetics
-- **States of Matter**: Gases, liquids, solids, phase changes
-- **Organic Chemistry**: Carbon compounds, functional groups
-- **Thermodynamics**: Energy changes, enthalpy, entropy
-
-**Chemistry Study Tips:**
-1. **Connect** concepts to real-world examples
-2. **Practice** balancing equations regularly
-3. **Understand** rather than memorize patterns
-4. **Use** the periodic table as your guide
-5. **Visualize** molecular structures and interactions
-
-What chemistry topic or concept would you like to explore?`
-      };
-
-      return helpTemplates[subject as keyof typeof helpTemplates] || 
-        `I'm your AI tutor and I'm here to help you learn! Please let me know what specific topic or question you'd like to work on, and I'll provide detailed explanations and examples to help you understand the concepts better.`;
-    },
     queryDirect: (data: {
       query: string;
       subject?: string;

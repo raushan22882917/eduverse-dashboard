@@ -650,7 +650,8 @@ export default function AITutorPage() {
         const hasGoodContent = rag.answer || rag.generated_text;
         const hasValidSources = rag.sources && rag.sources.length > 0;
         
-        if (hasGoodContent && (ragConfidence > 0.4 || hasValidSources)) {
+        // Only use RAG response if it actually found content
+        if (hasGoodContent && ragConfidence > 0 && !rag.metadata?.no_content_available) {
           finalResponse = {
             content: rag.answer || rag.generated_text,
             sources: rag.sources || [],
@@ -659,7 +660,8 @@ export default function AITutorPage() {
               confidence: ragConfidence,
               sources_count: rag.sources?.length || 0,
               processing_time: rag.metadata?.processing_time,
-              offline_mode: rag.metadata?.offline_mode
+              offline_mode: rag.metadata?.offline_mode,
+              rag_match_found: rag.metadata?.rag_match_found
             }
           };
           responseSource = 'rag';
@@ -686,26 +688,44 @@ export default function AITutorPage() {
         }
       }
 
-      // If all methods failed, provide a helpful error message
+      // If all methods failed, try to get a welcome message from Gemini
       if (!finalResponse) {
-        finalResponse = {
-          content: `I apologize, but I'm having trouble accessing my knowledge base right now. Here are some things you can try:
-
-1. **Check your connection** - Make sure you have a stable internet connection
-2. **Rephrase your question** - Try asking in a different way or be more specific
-3. **Specify the subject** - Make sure you've selected the correct subject (${subject})
-4. **Try again later** - The service might be temporarily unavailable
-
-If the problem persists, please contact support. I'm here to help you learn!`,
-          sources: [],
-          metadata: {
-            error_fallback: true,
-            confidence: 0.1,
-            all_methods_failed: true
+        try {
+          const welcomeResponse = await api.rag.queryDirect({
+            query: `Generate a brief, friendly welcome message for a student asking about ${subject}. Keep it encouraging and mention that you're ready to help with their studies. Maximum 2-3 sentences.`,
+            subject: subject as any
+          });
+          
+          if (welcomeResponse && (welcomeResponse.generated_text || welcomeResponse.answer)) {
+            finalResponse = {
+              content: welcomeResponse.generated_text || welcomeResponse.answer,
+              sources: [],
+              metadata: {
+                welcome_message: true,
+                confidence: 0.8,
+                generated_by_ai: true
+              }
+            };
+            responseSource = 'welcome';
+            confidence = 0.8;
           }
-        };
-        responseSource = 'error_fallback';
-        confidence = 0.1;
+        } catch (error) {
+          console.error('Failed to generate welcome message:', error);
+        }
+        
+        // Final fallback if even welcome message fails
+        if (!finalResponse) {
+          finalResponse = {
+            content: `Hello! I'm your AI tutor and I'm ready to help you with ${subject}. Please ask me any question and I'll do my best to provide a helpful explanation.`,
+            sources: [],
+            metadata: {
+              simple_fallback: true,
+              confidence: 0.5
+            }
+          };
+          responseSource = 'simple_fallback';
+          confidence = 0.5;
+        }
       }
 
       // Create AI message
@@ -1156,14 +1176,16 @@ If the problem persists, please contact support. I'm here to help you learn!`,
                               message.metadata.response_source === 'memory' && "bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800",
                               message.metadata.response_source === 'rag' && "bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800",
                               message.metadata.response_source === 'direct' && "bg-orange-50 dark:bg-orange-950/20 border-orange-200 dark:border-orange-800",
-                              message.metadata.response_source === 'error_fallback' && "bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800"
+                              message.metadata.response_source === 'welcome' && "bg-purple-50 dark:bg-purple-950/20 border-purple-200 dark:border-purple-800",
+                              message.metadata.response_source === 'simple_fallback' && "bg-gray-50 dark:bg-gray-950/20 border-gray-200 dark:border-gray-800"
                             )}>
                               <p className={cn(
                                 "text-xs flex items-center gap-1.5",
                                 message.metadata.response_source === 'memory' && "text-blue-700 dark:text-blue-300",
                                 message.metadata.response_source === 'rag' && "text-green-700 dark:text-green-300",
                                 message.metadata.response_source === 'direct' && "text-orange-700 dark:text-orange-300",
-                                message.metadata.response_source === 'error_fallback' && "text-red-700 dark:text-red-300"
+                                message.metadata.response_source === 'welcome' && "text-purple-700 dark:text-purple-300",
+                                message.metadata.response_source === 'simple_fallback' && "text-gray-700 dark:text-gray-300"
                               )}>
                                 {message.metadata.response_source === 'memory' && (
                                   <>
@@ -1187,10 +1209,16 @@ If the problem persists, please contact support. I'm here to help you learn!`,
                                     <span className="font-medium">General Knowledge:</span> Based on general academic knowledge
                                   </>
                                 )}
-                                {message.metadata.response_source === 'error_fallback' && (
+                                {message.metadata.response_source === 'welcome' && (
+                                  <>
+                                    <Sparkles className="h-3 w-3" />
+                                    <span className="font-medium">Welcome Message:</span> AI-generated greeting
+                                  </>
+                                )}
+                                {message.metadata.response_source === 'simple_fallback' && (
                                   <>
                                     <AlertCircle className="h-3 w-3" />
-                                    <span className="font-medium">Service Issue:</span> Using fallback response
+                                    <span className="font-medium">Simple Greeting:</span> Basic welcome message
                                   </>
                                 )}
                               </p>
