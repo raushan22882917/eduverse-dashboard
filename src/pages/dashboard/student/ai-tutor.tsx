@@ -691,10 +691,13 @@ export default function AITutorPage() {
       // If all methods failed, try to get a welcome message from Gemini
       if (!finalResponse) {
         try {
+          console.log('Attempting to generate welcome message for subject:', subject);
           const welcomeResponse = await api.rag.queryDirect({
             query: `Generate a brief, friendly welcome message for a student asking about ${subject}. Keep it encouraging and mention that you're ready to help with their studies. Maximum 2-3 sentences.`,
             subject: subject as any
           });
+          
+          console.log('Welcome response received:', welcomeResponse);
           
           if (welcomeResponse && (welcomeResponse.generated_text || welcomeResponse.answer)) {
             finalResponse = {
@@ -708,6 +711,9 @@ export default function AITutorPage() {
             };
             responseSource = 'welcome';
             confidence = 0.8;
+            console.log('Using AI-generated welcome message');
+          } else {
+            console.log('No valid welcome response received, will use fallback');
           }
         } catch (error) {
           console.error('Failed to generate welcome message:', error);
@@ -715,8 +721,9 @@ export default function AITutorPage() {
         
         // Final fallback if even welcome message fails
         if (!finalResponse) {
+          console.log('Using simple fallback message');
           finalResponse = {
-            content: `Hello! I'm your AI tutor and I'm ready to help you with ${subject}. Please ask me any question and I'll do my best to provide a helpful explanation.`,
+            content: `Hello! I'm ready to help you with ${subject}. What would you like to learn about today?`,
             sources: [],
             metadata: {
               simple_fallback: true,
@@ -742,7 +749,7 @@ export default function AITutorPage() {
           ...finalResponse.metadata,
           response_source: responseSource,
           final_confidence: confidence,
-          parallel_processing: true,
+          parallel_processing: responseSource !== 'welcome' && responseSource !== 'simple_fallback',
           processing_timestamp: new Date().toISOString()
         }
       };
