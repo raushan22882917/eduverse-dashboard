@@ -504,35 +504,132 @@ export default function AITutorPage() {
     setLoading(true);
 
     try {
-      // Get conversation context from memory
+      // Enhanced memory retrieval with multiple strategies
       let memoryContext = '';
+      let foundInMemory = false;
+      let memoryConfidence = 0;
+      
       try {
-        const relevantMemory = await api.memory.recall(user.id, {
+        // Strategy 1: Look for similar questions in memory
+        const similarQuestions = await api.memory.recall(user.id, {
           context_type: 'learning',
           subject: subject,
-          limit: 3,
-          days_back: 30,
-          min_importance: 0.6
+          limit: 5,
+          days_back: 60,
+          min_importance: 0.5
         });
 
-        if (relevantMemory.contexts && relevantMemory.contexts.length > 0) {
-          const memoryItems = relevantMemory.contexts
+        if (similarQuestions.contexts && similarQuestions.contexts.length > 0) {
+          // Find the most relevant previous Q&A
+          const relevantQA = similarQuestions.contexts
+            .filter((ctx: any) => ctx.content && ctx.content.question && ctx.content.answer)
             .map((ctx: any) => {
-              const content = ctx.content;
-              if (content.question && content.answer) {
-                return `Previous Q&A: Q: ${content.question.substring(0, 100)}... A: ${content.answer.substring(0, 150)}...`;
-              }
-              return null;
+              const question = ctx.content.question.toLowerCase();
+              const userQuestion = questionText.toLowerCase();
+              
+              // Simple similarity check
+              const similarity = calculateSimilarity(question, userQuestion);
+              
+              return {
+                ...ctx,
+                similarity,
+                question: ctx.content.question,
+                answer: ctx.content.answer
+              };
             })
-            .filter(Boolean)
-            .slice(0, 2);
+            .sort((a, b) => b.similarity - a.similarity);
 
-          if (memoryItems.length > 0) {
-            memoryContext = `\n\nRelevant previous context:\n${memoryItems.join('\n')}`;
+          // If we find a highly similar question (>70% similarity), use it directly
+          if (relevantQA.length > 0 && relevantQA[0].similarity > 0.7) {
+            foundInMemory = true;
+            memoryConfidence = relevantQA[0].similarity;
+            
+            const bestMatch = relevantQA[0];
+            const aiMessage: Message = {
+              id: `ai-${Date.now()}`,
+              role: 'assistant',
+              content: `I remember we discussed something very similar before! Here's what I explained:\n\n${bestMatch.answer}\n\n*This response was retrieved from your previous learning session on ${new Date(bestMatch.stored_at).toLocaleDateString()}.*\n\nWould you like me to elaborate on any part of this explanation?`,
+              subject: subject,
+              created_at: new Date().toISOString(),
+              metadata: {
+                memory_retrieved: true,
+                memory_confidence: memoryConfidence,
+                original_question: bestMatch.question,
+                retrieved_from: bestMatch.stored_at,
+                response_source: 'memory'
+              }
+            };
+
+            setMessages(prev => [...prev, aiMessage]);
+            
+            // Update memory access
+            await api.memory.remember(user.id, {
+              type: 'interaction',
+              content: {
+                action: 'memory_retrieval',
+                question: questionText,
+                retrieved_answer: bestMatch.answer,
+                confidence: memoryConfidence
+              },
+              subject: subject,
+              importance: 0.8,
+              tags: ['memory_retrieval', 'similar_question'],
+              source: 'ai_tutor_memory'
+            });
+
+            setLoading(false);
+            return;
+          }
+
+          // Build context from related memories
+          const contextItems = relevantQA
+            .slice(0, 3)
+            .map((ctx: any) => `Q: ${ctx.question.substring(0, 80)}...\nA: ${ctx.answer.substring(0, 120)}...`)
+            .join('\n\n');
+
+          if (contextItems) {
+            memoryContext = `\n\nRelevant previous discussions:\n${contextItems}`;
+          }
+        }
+
+        // Strategy 2: Look for concept-related memories
+        if (!foundInMemory) {
+          const conceptMemories = await api.memory.recall(user.id, {
+            context_type: 'learning',
+            subject: subject,
+            limit: 3,
+            days_back: 30,
+            min_importance: 0.6
+          });
+
+          if (conceptMemories.contexts && conceptMemories.contexts.length > 0) {
+            const conceptContext = conceptMemories.contexts
+              .filter((ctx: any) => ctx.content && (ctx.content.concepts || ctx.content.topic))
+              .map((ctx: any) => {
+                if (ctx.content.concepts) {
+                  return `Concepts: ${ctx.content.concepts.join(', ')}`;
+                }
+                if (ctx.content.topic) {
+                  return `Topic: ${ctx.content.topic}`;
+                }
+                return null;
+              })
+              .filter(Boolean)
+              .slice(0, 2)
+              .join('\n');
+
+            if (conceptContext && !memoryContext) {
+              memoryContext = `\n\nRelated concepts from your learning history:\n${conceptContext}`;
+            }
           }
         }
       } catch (error) {
         console.warn('Failed to load memory context:', error);
+      }
+
+      // If we found a direct answer in memory, we already returned above
+      if (foundInMemory) {
+        return;
       }
 
       // Try enhanced AI tutor first with memory integration
@@ -656,8 +753,11 @@ Would you like to rephrase your question or ask about a specific aspect? I'm her
         }
       }
 
-      // Store interaction in memory for future context
+      // Enhanced memory storage with Neo4j integration
       try {
+        const extractedConcepts = extractConceptsFromText(finalResponse.content, subject);
+        
+        // Store in primary memory system
         await api.memory.remember(user.id, {
           type: 'learning',
           content: {
@@ -666,21 +766,41 @@ Would you like to rephrase your question or ask about a specific aspect? I'm her
             subject: subject,
             confidence: confidence,
             sources: finalResponse.sources,
+            concepts: extractedConcepts,
             timestamp: new Date().toISOString(),
             response_source: responseSource,
-            session_id: enhancedSessionId || currentSession.id
+            session_id: enhancedSessionId || currentSession.id,
+            similarity_keywords: questionText.toLowerCase().split(/\s+/).filter(word => word.length > 3)
           },
           subject: subject,
           topic: questionText.length > 50 ? questionText.substring(0, 50) + '...' : questionText,
-          importance: Math.min(0.9, 0.5 + (finalResponse.content.length / 2000)),
-          tags: [subject, 'ai_tutor', 'qa_pair', responseSource],
+          importance: Math.min(0.9, 0.5 + (finalResponse.content.length / 2000) + (confidence * 0.3)),
+          tags: [subject, 'ai_tutor', 'qa_pair', responseSource, ...extractedConcepts.slice(0, 3)],
           source: 'ai_tutor_chat',
           session_id: enhancedSessionId || currentSession.id,
           component: 'AITutorPage'
         });
 
+        // Store in Neo4j memory graph (non-blocking)
+        if (typeof window !== 'undefined') {
+          import('@/utils/neo4jMemory').then(({ Neo4jMemoryManager }) => {
+            const memoryManager = new Neo4jMemoryManager(user.id);
+            memoryManager.storeInteraction({
+              question: questionText,
+              answer: finalResponse.content,
+              subject: subject,
+              concepts: extractedConcepts,
+              confidence: confidence,
+              sources: finalResponse.sources
+            }).catch(error => {
+              console.warn('Neo4j memory storage failed:', error);
+            });
+          }).catch(error => {
+            console.warn('Failed to load Neo4j memory manager:', error);
+          });
+        }
+
         // Update knowledge graph with concepts (in background, non-blocking)
-        const extractedConcepts = extractConceptsFromText(finalResponse.content, subject);
         if (extractedConcepts.length > 0) {
           // Run knowledge graph updates in background without blocking UI
           Promise.all(
@@ -755,6 +875,22 @@ Would you like to rephrase your question or ask about a specific aspect? I'm her
       setLoading(false);
       inputRef.current?.focus();
     }
+  };
+
+  // Calculate similarity between two strings using simple word overlap
+  const calculateSimilarity = (str1: string, str2: string): number => {
+    const words1 = str1.toLowerCase().split(/\s+/).filter(word => word.length > 2);
+    const words2 = str2.toLowerCase().split(/\s+/).filter(word => word.length > 2);
+    
+    if (words1.length === 0 || words2.length === 0) return 0;
+    
+    const set1 = new Set(words1);
+    const set2 = new Set(words2);
+    
+    const intersection = new Set([...set1].filter(word => set2.has(word)));
+    const union = new Set([...set1, ...set2]);
+    
+    return intersection.size / union.size;
   };
 
   const extractConceptsFromText = (text: string, subject: string): string[] => {
@@ -1284,6 +1420,44 @@ Would you like to rephrase your question or ask about a specific aspect? I'm her
                   </Card>
                 )}
 
+                {/* Memory Insights */}
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Brain className="h-4 w-4" />
+                      Memory Insights
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">Stored Q&As</span>
+                        <span className="font-medium">
+                          {(() => {
+                            try {
+                              const memoryKey = `memory_intelligence_${user?.id}`;
+                              const memory = JSON.parse(localStorage.getItem(memoryKey) || '[]');
+                              return memory.filter((item: any) => item.type === 'learning').length;
+                            } catch {
+                              return 0;
+                            }
+                          })()}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">This Session</span>
+                        <span className="font-medium">{messages.filter(m => m.role === 'student').length}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">Memory Enhanced</span>
+                        <span className="font-medium text-purple-600">
+                          {messages.filter(m => m.metadata?.memory_retrieved || m.metadata?.memory_enhanced).length}
+                        </span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
                 {/* Recent Notes */}
                 {recentNotes.length > 0 && (
                   <Card>
@@ -1323,6 +1497,50 @@ Would you like to rephrase your question or ask about a specific aspect? I'm her
                 <Button variant="outline" size="sm" className="w-full justify-start">
                   <Save className="h-4 w-4 mr-2" />
                   Save Session
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="w-full justify-start"
+                  onClick={() => {
+                    if (user?.id) {
+                      const memoryKey = `memory_intelligence_${user.id}`;
+                      const memory = JSON.parse(localStorage.getItem(memoryKey) || '[]');
+                      const learningMemories = memory.filter((item: any) => item.type === 'learning');
+                      
+                      toast({
+                        title: "Memory Statistics",
+                        description: `You have ${learningMemories.length} stored Q&A pairs and ${memory.length} total memory items.`,
+                      });
+                    }
+                  }}
+                >
+                  <Brain className="h-4 w-4 mr-2" />
+                  View Memory
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="w-full justify-start text-red-600 hover:text-red-700"
+                  onClick={() => {
+                    if (user?.id && confirm('Are you sure you want to clear all memory? This cannot be undone.')) {
+                      const memoryKey = `memory_intelligence_${user.id}`;
+                      const neo4jKey = `neo4j_graph_${user.id}`;
+                      const neo4jRelKey = `neo4j_relationships_${user.id}`;
+                      
+                      localStorage.removeItem(memoryKey);
+                      localStorage.removeItem(neo4jKey);
+                      localStorage.removeItem(neo4jRelKey);
+                      
+                      toast({
+                        title: "Memory Cleared",
+                        description: "All stored memory has been cleared.",
+                      });
+                    }
+                  }}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Clear Memory
                 </Button>
                 <Button variant="outline" size="sm" className="w-full justify-start">
                   <Settings className="h-4 w-4 mr-2" />
@@ -1440,7 +1658,20 @@ Would you like to rephrase your question or ask about a specific aspect? I'm her
                               : 'bg-muted'
                           )}
                         >
-                          {message.role === 'assistant' && message.metadata?.response_source === 'rag' && (
+                          {message.role === 'assistant' && message.metadata?.memory_retrieved && (
+                            <div className="mb-2 p-2 border rounded-lg bg-purple-50 dark:bg-purple-950/20 border-purple-200 dark:border-purple-800">
+                              <p className="text-xs flex items-center gap-1.5 text-purple-700 dark:text-purple-300">
+                                <Brain className="h-3 w-3" />
+                                <span className="font-medium">Memory Retrieved:</span> 
+                                Found similar question from {message.metadata.retrieved_from ? new Date(message.metadata.retrieved_from).toLocaleDateString() : 'previous session'}
+                                {message.metadata.memory_confidence && (
+                                  <span className="ml-1">({Math.round(message.metadata.memory_confidence * 100)}% match)</span>
+                                )}
+                              </p>
+                            </div>
+                          )}
+
+                          {message.role === 'assistant' && message.metadata?.response_source === 'rag' && !message.metadata?.memory_retrieved && (
                             <div className="mb-2 p-2 border rounded-lg bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800">
                               <p className="text-xs flex items-center gap-1.5 text-green-700 dark:text-green-300">
                                 <BookMarked className="h-3 w-3" />
@@ -1449,6 +1680,16 @@ Would you like to rephrase your question or ask about a specific aspect? I'm her
                                 {message.metadata.final_confidence && message.metadata.final_confidence > 0.1 && (
                                   <span className="ml-1">({Math.round(message.metadata.final_confidence * 100)}% confidence)</span>
                                 )}
+                              </p>
+                            </div>
+                          )}
+
+                          {message.role === 'assistant' && message.metadata?.memory_enhanced && !message.metadata?.memory_retrieved && (
+                            <div className="mb-2 p-2 border rounded-lg bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
+                              <p className="text-xs flex items-center gap-1.5 text-blue-700 dark:text-blue-300">
+                                <Brain className="h-3 w-3" />
+                                <span className="font-medium">Memory Enhanced:</span> 
+                                Response enriched with your learning history
                               </p>
                             </div>
                           )}

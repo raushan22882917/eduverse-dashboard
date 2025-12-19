@@ -156,10 +156,11 @@ const TeacherDashboard = () => {
   ];
 
   return (
-    <div className="flex min-h-screen w-full">
+    <div className="flex h-screen w-full overflow-hidden">
       <TeacherSidebar />
       
-      <main className="flex-1 p-8 overflow-y-auto bg-background">
+      <main className="flex-1 overflow-y-auto bg-background">
+        <div className="p-8">
         <div className="max-w-7xl mx-auto">
           {/* Page Heading */}
           <div className="mb-8">
@@ -278,6 +279,7 @@ const TeacherDashboard = () => {
               </div>
             </CardContent>
           </Card>
+        </div>
         </div>
       </main>
     </div>

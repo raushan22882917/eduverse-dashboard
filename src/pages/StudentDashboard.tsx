@@ -75,6 +75,7 @@ import InteractiveLoader from "@/components/InteractiveLoader";
 import InlineLoader from "@/components/InlineLoader";
 import ApiHealthIndicator from "@/components/ApiHealthIndicator";
 import ClassroomSession from "@/components/ClassroomSession";
+import { MathText } from "@/components/MathRenderer";
 import { supabase } from "@/integrations/supabase/client";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
@@ -127,9 +128,9 @@ const StudentDashboard = () => {
   const [generatingPlan, setGeneratingPlan] = useState(false);
   const [quickActions, setQuickActions] = useState([
     { id: 1, title: "Start AI Tutor", icon: Brain, color: "bg-purple-500", action: () => navigate("/dashboard/student/ai-tutor") },
-    { id: 2, title: "Take Quiz", icon: Target, color: "bg-blue-500", action: () => navigate("/dashboard/student/quiz") },
-    { id: 3, title: "Practice Problems", icon: Calculator, color: "bg-green-500", action: () => navigate("/dashboard/student/practice") },
-    { id: 4, title: "Study Groups", icon: Users, color: "bg-orange-500", action: () => navigate("/dashboard/student/groups") }
+    { id: 2, title: "Take Quiz", icon: Target, color: "bg-blue-500", action: () => navigate("/dashboard/student/exams") },
+    { id: 3, title: "Interactive Classroom", icon: Users, color: "bg-green-500", action: () => navigate("/dashboard/student/classroom") },
+    { id: 4, title: "View Microplan", icon: Calendar, color: "bg-orange-500", action: () => navigate("/dashboard/student/microplan") }
   ]);
 
   useEffect(() => {
@@ -172,6 +173,30 @@ const StudentDashboard = () => {
 
     return () => clearInterval(timer);
   }, []);
+
+  // Study timer effect
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (studyTimer.isRunning) {
+      interval = setInterval(() => {
+        setStudyTimer(prev => {
+          const newSeconds = prev.seconds + 1;
+          if (newSeconds >= 60) {
+            return {
+              ...prev,
+              minutes: prev.minutes + 1,
+              seconds: 0
+            };
+          }
+          return {
+            ...prev,
+            seconds: newSeconds
+          };
+        });
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [studyTimer.isRunning]);
 
   // Animate stats on load
   useEffect(() => {
@@ -620,15 +645,16 @@ const StudentDashboard = () => {
   };
 
   return (
-    <div className="flex min-h-screen w-full">
+    <div className="flex h-screen w-full overflow-hidden">
       <StudentSidebar />
 
-      <main className="flex-1 p-4 md:p-8 overflow-y-auto bg-gradient-to-br from-background via-background to-primary/5">
+      <main className="flex-1 overflow-y-auto bg-gradient-to-br from-background via-background to-primary/5">
+        <div className="p-4 md:p-8">
         <div className="max-w-7xl mx-auto">
           {/* Enhanced Header with Real-time Elements */}
           <div className="mb-8 relative">
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-              <div>
+              <div className="flex-1">
                 <div className="flex items-center gap-3 mb-2">
                   {getGreetingIcon()}
                   <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
@@ -636,15 +662,56 @@ const StudentDashboard = () => {
                   </h1>
                 </div>
                 <p className="text-muted-foreground text-lg">{weatherGreeting}</p>
-                <div className="flex items-center gap-2 mt-2">
-                  <Clock className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">
-                    {currentTime.toLocaleTimeString()} • {currentTime.toLocaleDateString()}
-                  </span>
+                <div className="flex items-center gap-4 mt-2">
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">
+                      {currentTime.toLocaleTimeString()} • {currentTime.toLocaleDateString()}
+                    </span>
+                  </div>
+                  {studentData.grade && (
+                    <Badge variant="outline" className="text-primary border-primary/30">
+                      Grade {studentData.grade}
+                    </Badge>
+                  )}
                 </div>
               </div>
               
-            
+              {/* Study Timer Widget */}
+              <Card className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 border-blue-500/20">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-4">
+                    <div className="text-center">
+                      <div className="text-2xl font-mono font-bold text-blue-600">
+                        {formatTime(studyTimer.minutes, studyTimer.seconds)}
+                      </div>
+                      <div className="text-xs text-muted-foreground">Study Timer</div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={toggleStudyTimer}
+                        className="h-8 w-8 p-0"
+                      >
+                        {studyTimer.isRunning ? (
+                          <Pause className="h-3 w-3" />
+                        ) : (
+                          <Play className="h-3 w-3" />
+                        )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={resetStudyTimer}
+                        className="h-8 w-8 p-0"
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
             
             {/* Daily Quote */}
@@ -676,6 +743,49 @@ const StudentDashboard = () => {
                       <action.icon className="h-6 w-6 text-white" />
                     </div>
                     <p className="font-medium text-sm">{action.title}</p>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+
+          {/* All Features Overview */}
+          <div className="mb-8">
+            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+              <Globe className="h-5 w-5 text-primary" />
+              All Features
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {[
+                { title: "AI Tutor", icon: Brain, color: "bg-purple-500", route: "/dashboard/student/ai-tutor", description: "Get personalized help" },
+                { title: "Interactive Classroom", icon: Users, color: "bg-blue-500", route: "/dashboard/student/classroom", description: "Join live sessions" },
+                { title: "All Subjects", icon: BookOpen, color: "bg-green-500", route: "/dashboard/student/subjects", description: "Browse all topics" },
+                { title: "Exams & Tests", icon: FileText, color: "bg-red-500", route: "/dashboard/student/exams", description: "Take practice tests" },
+                { title: "Achievements", icon: Trophy, color: "bg-yellow-500", route: "/dashboard/student/achievements", description: "View your progress" },
+                { title: "Daily Microplan", icon: Target, color: "bg-indigo-500", route: "/dashboard/student/microplan", description: "AI-generated plans" },
+                { title: "Homework", icon: Bookmark, color: "bg-pink-500", route: "/dashboard/student/homework", description: "Track assignments" },
+                { title: "Content Library", icon: Download, color: "bg-teal-500", route: "/dashboard/student/content/downloads", description: "Study materials" },
+                { title: "Draw in Air", icon: Hand, color: "bg-orange-500", route: "/dashboard/student/draw-in-air", description: "3D drawing tool" },
+                { title: "Upload Content", icon: Upload, color: "bg-cyan-500", route: "/dashboard/student/upload-content", description: "Share your work" },
+                { title: "Notifications", icon: Bell, color: "bg-violet-500", route: "/dashboard/student/notifications", description: "Stay updated" },
+                { title: "Settings", icon: Settings, color: "bg-gray-500", route: "/dashboard/student/settings", description: "Customize experience" },
+                { title: "Math Demo", icon: Calculator, color: "bg-emerald-500", route: "/math-demo", description: "Mathematical expressions" }
+              ].map((feature, index) => (
+                <Card 
+                  key={index}
+                  className="cursor-pointer hover:shadow-md transition-all duration-300 hover:-translate-y-1 group border hover:border-primary/30"
+                  onClick={() => navigate(feature.route)}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className={`${feature.color} w-8 h-8 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform`}>
+                        <feature.icon className="h-4 w-4 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium text-sm">{feature.title}</p>
+                        <p className="text-xs text-muted-foreground">{feature.description}</p>
+                      </div>
+                    </div>
                   </CardContent>
                 </Card>
               ))}
@@ -788,9 +898,10 @@ const StudentDashboard = () => {
             </Card>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Left Column - Enhanced */}
-            <div className="lg:col-span-2 flex flex-col gap-8">
+          {/* Main Dashboard Content */}
+          <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">
+            {/* Left Column - Main Content */}
+            <div className="xl:col-span-3 flex flex-col gap-8">
               {/* Enhanced Today's Microplan Card */}
               {todayMicroplan ? (
                 <Card className="border-2 border-primary/20 shadow-lg">
@@ -899,7 +1010,7 @@ const StudentDashboard = () => {
                 </Card>
               )}
 
-              {/* Weekly Progress Card */}
+              {/* Learning Progress Overview */}
               <Card className="border-2 border-green-500/20">
                 <CardHeader>
                   <div className="flex items-center justify-between">
@@ -908,8 +1019,8 @@ const StudentDashboard = () => {
                         <BarChart3 className="h-5 w-5 text-green-500" />
                       </div>
                       <div>
-                        <CardTitle>Weekly Goal</CardTitle>
-                        <CardDescription>Track your learning consistency</CardDescription>
+                        <CardTitle>Learning Progress</CardTitle>
+                        <CardDescription>Your weekly learning journey</CardDescription>
                       </div>
                     </div>
                     <Badge variant="outline" className="text-green-500 border-green-500/30">
@@ -918,28 +1029,62 @@ const StudentDashboard = () => {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-4">
+                  <div className="space-y-6">
+                    {/* Weekly Goal Progress */}
                     <div>
                       <div className="flex justify-between text-sm mb-2">
-                        <span>Progress this week</span>
+                        <span>Weekly Goal Progress</span>
                         <span className="font-medium">{Math.round((studentData.weeklyProgress / studentData.weeklyGoal) * 100)}%</span>
                       </div>
                       <Progress value={(studentData.weeklyProgress / studentData.weeklyGoal) * 100} className="h-3" />
                     </div>
-                    <div className="grid grid-cols-7 gap-1">
-                      {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day, index) => (
-                        <div
-                          key={index}
-                          className={`aspect-square rounded-lg flex items-center justify-center text-xs font-medium ${
-                            index < studentData.weeklyProgress
-                              ? 'bg-green-500 text-white'
-                              : 'bg-muted text-muted-foreground'
-                          }`}
-                        >
-                          {day}
-                        </div>
-                      ))}
+
+                    {/* Weekly Calendar */}
+                    <div>
+                      <p className="text-sm font-medium mb-2">This Week</p>
+                      <div className="grid grid-cols-7 gap-1">
+                        {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day, index) => (
+                          <div
+                            key={index}
+                            className={`aspect-square rounded-lg flex items-center justify-center text-xs font-medium ${
+                              index < studentData.weeklyProgress
+                                ? 'bg-green-500 text-white'
+                                : 'bg-muted text-muted-foreground'
+                            }`}
+                          >
+                            {day}
+                          </div>
+                        ))}
+                      </div>
                     </div>
+
+                    {/* Subject Progress Bars */}
+                    <div>
+                      <p className="text-sm font-medium mb-3">Subject Mastery</p>
+                      <div className="space-y-3">
+                        <div>
+                          <div className="flex justify-between text-xs mb-1">
+                            <span className="flex items-center gap-1">
+                              <Calculator className="h-3 w-3" />
+                              Mathematics
+                            </span>
+                            <span>{studentData.mathProgress}%</span>
+                          </div>
+                          <Progress value={studentData.mathProgress} className="h-2" />
+                        </div>
+                        <div>
+                          <div className="flex justify-between text-xs mb-1">
+                            <span className="flex items-center gap-1">
+                              <Microscope className="h-3 w-3" />
+                              Science
+                            </span>
+                            <span>{studentData.scienceProgress}%</span>
+                          </div>
+                          <Progress value={studentData.scienceProgress} className="h-2" />
+                        </div>
+                      </div>
+                    </div>
+
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <CheckCircle2 className="h-4 w-4 text-green-500" />
                       <span>Great consistency! Keep it up!</span>
@@ -1291,20 +1436,151 @@ const StudentDashboard = () => {
                   </Button>
                 </>
               )}
+
+              {/* Mathematical Expressions Demo */}
+              <Card className="border-2 border-blue-500/20">
+                <CardHeader>
+                  <div className="flex items-center gap-2">
+                    <div className="bg-blue-500/20 p-2 rounded-lg">
+                      <Calculator className="h-5 w-5 text-blue-500" />
+                    </div>
+                    <div>
+                      <CardTitle>Mathematical Expressions</CardTitle>
+                      <CardDescription>Properly rendered math notation</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 rounded-lg border">
+                      <h4 className="font-semibold mb-3 text-blue-700 dark:text-blue-300">Vector Notation</h4>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-muted-foreground">Vector v:</span>
+                          <MathText children="$\vec{v}$" />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-muted-foreground">Magnitude:</span>
+                          <MathText children="$|\vec{v}| = \sqrt{v_x^2 + v_y^2 + v_z^2}$" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20 rounded-lg border">
+                      <h4 className="font-semibold mb-3 text-green-700 dark:text-green-300">Quadratic Formula</h4>
+                      <div className="text-center">
+                        <MathText children="$$x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$$" />
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 rounded-lg border">
+                      <h4 className="font-semibold mb-3 text-purple-700 dark:text-purple-300">Physics Equations</h4>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-muted-foreground">Force:</span>
+                          <MathText children="$F = ma$" />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-muted-foreground">Energy:</span>
+                          <MathText children="$E = mc^2$" />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-muted-foreground">Kinetic Energy:</span>
+                          <MathText children="$KE = \\frac{1}{2}mv^2$" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-950/20 dark:to-red-950/20 rounded-lg border">
+                      <h4 className="font-semibold mb-3 text-orange-700 dark:text-orange-300">Calculus</h4>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-muted-foreground">Derivative:</span>
+                          <MathText children="$\\frac{d}{dx}f(x) = \\lim_{h \\to 0} \\frac{f(x+h) - f(x)}{h}$" />
+                        </div>
+                        <div className="text-center mt-3">
+                          <MathText children="$$\\int_{a}^{b} f(x) \\, dx = F(b) - F(a)$$" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/20 dark:to-purple-950/20 rounded-lg border">
+                      <h4 className="font-semibold mb-3 text-indigo-700 dark:text-indigo-300">Complex Numbers</h4>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-muted-foreground">Euler's Formula:</span>
+                          <MathText children="$e^{i\\theta} = \\cos\\theta + i\\sin\\theta$" />
+                        </div>
+                        <div className="text-center mt-3">
+                          <MathText children="$$z = r(\\cos\\theta + i\\sin\\theta) = re^{i\\theta}$$" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Interactive Classroom Session */}
+              <Card className="border-2 border-primary/20">
+                <CardHeader>
+                  <div className="flex items-center gap-2">
+                    <div className="bg-primary/20 p-2 rounded-lg">
+                      <Users className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <CardTitle>Interactive Classroom</CardTitle>
+                      <CardDescription>Join live sessions and collaborate</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <ClassroomSession />
+                </CardContent>
+              </Card>
             </div>
 
-            {/* Classroom Session - Full Width */}
-            <div className="lg:col-span-3">
-              <ClassroomSession />
-            </div>
-          </div>
+            {/* Right Sidebar - Enhanced */}
+            <div className="xl:col-span-1 space-y-6">
+              {/* Today's Focus */}
+              <Card className="border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-primary/10">
+                <CardHeader>
+                  <div className="flex items-center gap-2">
+                    <div className="bg-primary/20 p-2 rounded-lg">
+                      <Target className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <CardTitle>Today's Focus</CardTitle>
+                      <CardDescription>Your learning priorities</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between p-3 bg-white/50 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <Calculator className="h-4 w-4 text-primary" />
+                        <span className="text-sm font-medium">Mathematics</span>
+                      </div>
+                      <Badge variant="outline" className="text-xs">
+                        {studentData.mathProgress}%
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-white/50 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <Microscope className="h-4 w-4 text-blue-500" />
+                        <span className="text-sm font-medium">Science</span>
+                      </div>
+                      <Badge variant="outline" className="text-xs">
+                        {studentData.scienceProgress}%
+                      </Badge>
+                    </div>
+                    <Button className="w-full mt-4" size="sm" onClick={() => navigate("/dashboard/student/microplan")}>
+                      View Full Plan
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
 
-          {/* Second Row - Right Column Content */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2"></div>
-
-            {/* Right Column - Enhanced */}
-            <div className="lg:col-span-1 space-y-6">
               {/* Achievements Showcase */}
               <Card className="border-2 border-yellow-500/20 shadow-lg">
                 <CardHeader className="bg-gradient-to-r from-yellow-500/10 to-orange-500/10">
@@ -1415,10 +1691,20 @@ const StudentDashboard = () => {
                         "Can you explain quadratic equations?"
                       </p>
                     </div>
-                    <Button className="w-full bg-purple-500 hover:bg-purple-600 group" onClick={() => navigate("/dashboard/student/ai-tutor")}>
-                      <Brain className="h-4 w-4 mr-2 group-hover:rotate-12 transition-transform" />
-                      Start AI Session
-                    </Button>
+                    <div className="space-y-2">
+                      <Button className="w-full bg-purple-500 hover:bg-purple-600 group" onClick={() => navigate("/dashboard/student/ai-tutor")}>
+                        <Brain className="h-4 w-4 mr-2 group-hover:rotate-12 transition-transform" />
+                        Start AI Session
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        className="w-full group" 
+                        onClick={() => navigate("/math-demo")}
+                      >
+                        <Calculator className="h-4 w-4 mr-2 group-hover:rotate-12 transition-transform" />
+                        View Math Demo
+                      </Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -1487,10 +1773,43 @@ const StudentDashboard = () => {
                 </CardContent>
               </Card>
 
+              {/* Quick Navigation */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Globe className="h-5 w-5 text-primary" />
+                    Quick Navigation
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {[
+                      { title: "AI Chat", icon: MessageCircle, route: "/dashboard/student/chat", color: "text-purple-500" },
+                      { title: "Focus Timer", icon: Timer, route: "/dashboard/student/focus-timer", color: "text-blue-500" },
+                      { title: "PYQ Practice", icon: FileText, route: "/dashboard/student/pyq", color: "text-green-500" },
+                      { title: "Quiz Creator", icon: Plus, route: "/dashboard/student/quiz-creator", color: "text-orange-500" },
+                      { title: "Analytics", icon: BarChart3, route: "/dashboard/student/analytics", color: "text-indigo-500" }
+                    ].map((item, index) => (
+                      <Button
+                        key={index}
+                        variant="ghost"
+                        className="w-full justify-start gap-2 h-auto p-3"
+                        onClick={() => navigate(item.route)}
+                      >
+                        <item.icon className={`h-4 w-4 ${item.color}`} />
+                        <span className="text-sm">{item.title}</span>
+                        <ChevronRight className="h-3 w-3 ml-auto text-muted-foreground" />
+                      </Button>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
               {/* System Status */}
-              {/* <ApiHealthIndicator showDetails={true} /> */}
+              <ApiHealthIndicator showDetails={false} />
             </div>
           </div>
+        </div>
         </div>
       </main>
     </div>

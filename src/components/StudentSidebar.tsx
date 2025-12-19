@@ -83,29 +83,34 @@ const StudentSidebar = () => {
   }, [user]);
 
   return (
-    <aside className="w-64 flex-shrink-0 bg-card border-r flex flex-col justify-between">
-      <div className="flex flex-col gap-8 p-4">
-        <div className="flex items-center gap-2 p-2">
-          <GraduationCap className="h-8 w-8 text-primary" />
-          <h1 className="text-xl font-bold">AI Tutor</h1>
-        </div>
+    <aside className="w-64 flex-shrink-0 bg-card border-r flex flex-col h-screen sticky top-0">
+      <div className="flex flex-col flex-1 overflow-hidden">
+        {/* Header - Fixed */}
+        <div className="flex-shrink-0 p-4 border-b">
+          <div className="flex items-center gap-2 p-2 mb-4">
+            <GraduationCap className="h-8 w-8 text-primary" />
+            <h1 className="text-xl font-bold">AI Tutor</h1>
+          </div>
 
-        <div className="flex items-center gap-3">
-          <Avatar className="h-12 w-12">
-            <AvatarImage src="" />
-            <AvatarFallback className="bg-primary text-primary-foreground">
-              {user?.user_metadata?.full_name ? getInitials(user.user_metadata.full_name) : "ST"}
-            </AvatarFallback>
-          </Avatar>
-          <div className="flex flex-col">
-            <h2 className="text-base font-semibold">{user?.user_metadata?.full_name || "Student"}</h2>
-            <p className="text-sm text-muted-foreground">
-              {classGrade ? `Grade ${classGrade}` : "Student"}
-            </p>
+          <div className="flex items-center gap-3">
+            <Avatar className="h-12 w-12">
+              <AvatarImage src="" />
+              <AvatarFallback className="bg-primary text-primary-foreground">
+                {user?.user_metadata?.full_name ? getInitials(user.user_metadata.full_name) : "ST"}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex flex-col">
+              <h2 className="text-base font-semibold">{user?.user_metadata?.full_name || "Student"}</h2>
+              <p className="text-sm text-muted-foreground">
+                {classGrade ? `Grade ${classGrade}` : "Student"}
+              </p>
+            </div>
           </div>
         </div>
 
-        <nav className="flex flex-col gap-2">
+        {/* Navigation - Scrollable */}
+        <div className="flex-1 overflow-y-auto">
+          <nav className="flex flex-col gap-2 p-4">
           <NavLink
             to="/dashboard/student"
             end
@@ -222,25 +227,29 @@ const StudentSidebar = () => {
             <span className="text-sm font-medium">Settings</span>
           </NavLink>
         </nav>
-      </div>
-
-      <div className="flex flex-col gap-2 p-4">
-        <div className="bg-primary/10 p-4 rounded-lg text-center">
-          <HelpCircle className="h-10 w-10 text-primary mx-auto mb-2" />
-          <h3 className="font-semibold mb-1">Need Help?</h3>
-          <p className="text-sm text-muted-foreground mb-3">Our AI Tutor is here 24/7</p>
-          <Button size="sm" className="w-full" onClick={() => navigate('/dashboard/student/chat')}>
-            Start Chat
-          </Button>
         </div>
-        <Button
-          variant="outline"
-          className="w-full justify-start gap-2"
-          onClick={signOut}
-        >
-          <LogOut className="h-4 w-4" />
-          Sign Out
-        </Button>
+
+        {/* Footer - Fixed */}
+        <div className="flex-shrink-0 border-t">
+          <div className="flex flex-col gap-2 p-4">
+            <div className="bg-primary/10 p-4 rounded-lg text-center">
+              <HelpCircle className="h-10 w-10 text-primary mx-auto mb-2" />
+              <h3 className="font-semibold mb-1">Need Help?</h3>
+              <p className="text-sm text-muted-foreground mb-3">Our AI Tutor is here 24/7</p>
+              <Button size="sm" className="w-full" onClick={() => navigate('/dashboard/student/chat')}>
+                Start Chat
+              </Button>
+            </div>
+            <Button
+              variant="outline"
+              className="w-full justify-start gap-2"
+              onClick={signOut}
+            >
+              <LogOut className="h-4 w-4" />
+              Sign Out
+            </Button>
+          </div>
+        </div>
       </div>
     </aside>
   );
