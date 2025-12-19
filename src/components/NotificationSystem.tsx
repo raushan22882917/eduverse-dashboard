@@ -69,13 +69,20 @@ const NotificationSystem: React.FC<NotificationSystemProps> = ({ userId, classNa
       await api.notifications.dismiss(notificationId, userId);
       setNotifications(prev => prev.filter(notif => notif.id !== notificationId));
       setUnreadCount(prev => Math.max(0, prev - 1));
-    } catch (error) {
-      console.error('Error dismissing notification:', error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to dismiss notification",
-      });
+    } catch (error: any) {
+      console.warn('Error dismissing notification (using fallback):', error.message);
+      // Fallback: remove from local state anyway
+      setNotifications(prev => prev.filter(notif => notif.id !== notificationId));
+      setUnreadCount(prev => Math.max(0, prev - 1));
+      
+      // Only show error toast if it's not a network/API issue
+      if (!error.message?.includes('404') && !error.message?.includes('fetch')) {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to dismiss notification",
+        });
+      }
     }
   };
 

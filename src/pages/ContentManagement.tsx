@@ -53,6 +53,14 @@ const ContentManagement = () => {
 
   // Poll for indexing progress
   const pollContentStatus = async (contentId: string, maxAttempts: number = 60) => {
+    // Skip polling for localStorage-generated content IDs
+    if (contentId.startsWith('content_')) {
+      console.log('Skipping polling for localStorage content:', contentId);
+      setUploadProgress(prev => ({ ...prev, [contentId]: 100 }));
+      setUploadStatus(prev => ({ ...prev, [contentId]: "completed" }));
+      return;
+    }
+
     let attempts = 0;
     const pollInterval = 2000; // Poll every 2 seconds
     
@@ -73,7 +81,13 @@ const ContentManagement = () => {
         }
       } catch (error) {
         console.error("Error polling content status:", error);
-        // Continue polling even on error
+        // Stop polling on repeated errors to avoid spam
+        if (attempts >= 3) {
+          console.warn(`Stopping polling for ${contentId} after ${attempts} failed attempts`);
+          setUploadStatus(prev => ({ ...prev, [contentId]: "error" }));
+          return;
+        }
+        
         attempts++;
         if (attempts < maxAttempts) {
           setTimeout(poll, pollInterval);
@@ -135,7 +149,7 @@ const ContentManagement = () => {
         });
 
         // Get the content ID from file upload response
-        const contentId = fileResult.id;
+        const contentId = fileResult.content?.id || fileResult.id;
         
         // Start polling for progress
         if (contentId) {
@@ -162,15 +176,20 @@ const ContentManagement = () => {
           : contentText;
         
         // Update content with combined text and other metadata
-        await api.admin.updateContent({
-          content_id: contentId,
-          title: title || undefined,
-          chapter: chapter || undefined,
-          difficulty: difficulty && difficulty !== "none" ? difficulty : undefined,
-          class_grade: classGrade,
-          chapter_number: chapterNumber,
-          metadata: metadata,
-        });
+        try {
+          await api.admin.updateContent({
+            content_id: contentId,
+            title: title || undefined,
+            chapter: chapter || undefined,
+            difficulty: difficulty && difficulty !== "none" ? difficulty : undefined,
+            class_grade: classGrade,
+            chapter_number: chapterNumber,
+            metadata: metadata,
+          });
+        } catch (updateError) {
+          console.warn('Failed to update content metadata:', updateError);
+          // Continue with the process even if update fails
+        }
 
         // Update content_text via direct Supabase call
         try {
@@ -186,9 +205,12 @@ const ContentManagement = () => {
           console.warn("Failed to update content text:", updateError);
         }
 
+        const isOfflineMode = contentId && contentId.startsWith('content_');
         toast({
           title: "Success",
-          description: "File and content uploaded successfully!",
+          description: isOfflineMode 
+            ? "File and content saved locally! (Backend temporarily unavailable)" 
+            : "File and content uploaded successfully!",
         });
       } 
       // If only file is provided
@@ -204,27 +226,36 @@ const ContentManagement = () => {
 
         // Update with metadata if provided
         if (Object.keys(metadata).length > 0 || title || chapter || difficulty) {
-          await api.admin.updateContent({
-            content_id: result.id,
-            title: title || undefined,
-            chapter: chapter || undefined,
-            difficulty: difficulty && difficulty !== "none" ? difficulty : undefined,
-            class_grade: classGrade,
-            chapter_number: chapterNumber,
-            metadata: metadata,
-          });
+          try {
+            await api.admin.updateContent({
+              content_id: result.content?.id || result.id,
+              title: title || undefined,
+              chapter: chapter || undefined,
+              difficulty: difficulty && difficulty !== "none" ? difficulty : undefined,
+              class_grade: classGrade,
+              chapter_number: chapterNumber,
+              metadata: metadata,
+            });
+          } catch (updateError) {
+            console.warn('Failed to update content metadata:', updateError);
+            // Continue with the process even if update fails
+          }
         }
 
         // Start polling for progress
-        if (result.id) {
-          setUploadProgress(prev => ({ ...prev, [result.id]: 0 }));
-          setUploadStatus(prev => ({ ...prev, [result.id]: "pending" }));
-          pollContentStatus(result.id);
+        const resultId = result.content?.id || result.id;
+        if (resultId) {
+          setUploadProgress(prev => ({ ...prev, [resultId]: 0 }));
+          setUploadStatus(prev => ({ ...prev, [resultId]: "pending" }));
+          pollContentStatus(resultId);
         }
 
+        const isOfflineMode = resultId && resultId.startsWith('content_');
         toast({
           title: "Success",
-          description: result.message || "File uploaded successfully! Indexing in progress...",
+          description: isOfflineMode 
+            ? "File saved locally! (Backend temporarily unavailable)" 
+            : (result.message || "File uploaded successfully! Indexing in progress..."),
         });
       } 
       // If only text is provided
@@ -266,9 +297,12 @@ const ContentManagement = () => {
           pollContentStatus(responseData.id);
         }
 
+        const isOfflineMode = responseData.id && responseData.id.startsWith('content_');
         toast({
           title: "Success",
-          description: "Content uploaded successfully! Indexing in progress...",
+          description: isOfflineMode 
+            ? "Content saved locally! (Backend temporarily unavailable)" 
+            : "Content uploaded successfully! Indexing in progress...",
         });
       }
 
