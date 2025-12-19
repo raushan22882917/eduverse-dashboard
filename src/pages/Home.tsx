@@ -28,6 +28,8 @@ import {
   BarChart3,
   Rocket
 } from "lucide-react";
+import { ApiTest } from "@/components/ApiTest";
+import { MemoryAgentTest } from "@/components/MemoryAgentTest";
 
 const Home = () => {
   const [currentTestimonial, setCurrentTestimonial] = useState(0);
@@ -241,6 +243,14 @@ const Home = () => {
               <Brain className="h-6 w-6 text-accent" />
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* API Status Section */}
+      <section className="relative container mx-auto px-4 py-8">
+        <div className="max-w-4xl mx-auto space-y-6">
+          <ApiTest />
+          <MemoryAgentTest />
         </div>
       </section>
 

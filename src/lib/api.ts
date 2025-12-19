@@ -5,7 +5,7 @@
 // Determine API base URL:
 // 1. Use VITE_API_BASE_URL if explicitly set
 // 2. In development (localhost), use local backend
-// 3. In production, use relative path /api (proxied through Vercel)
+// 3. In production, use the Google Cloud Run backend directly
 const getApiBaseUrl = () => {
   if (import.meta.env.VITE_API_BASE_URL) {
     return import.meta.env.VITE_API_BASE_URL;
@@ -16,8 +16,8 @@ const getApiBaseUrl = () => {
     return 'http://localhost:8000/api';
   }
 
-  // Production: use relative path (proxied through Vercel)
-  return '/api';
+  // Production: use Google Cloud Run backend directly
+  return 'https://classroom-backend-121270846496.europe-west1.run.app/api';
 };
 
 const API_BASE_URL = getApiBaseUrl();
@@ -164,7 +164,7 @@ export const api = {
   // Health endpoints
   health: {
     check: () => fetchAPI<any>('/health'),
-    config: () => fetchAPI<any>('/config'),
+    config: () => fetchAPI<any>('/health/config'),
   },
 
   // RAG endpoints
@@ -348,6 +348,15 @@ export const api = {
     initialize: () =>
       fetchAPI<any>('/rag/initialize', {
         method: 'POST',
+      }),
+    evaluate: (data: {
+      query: string;
+      expected_answer: string;
+      subject?: string;
+    }) =>
+      fetchAPI<any>('/rag/evaluate', {
+        method: 'POST',
+        body: JSON.stringify(data),
       }),
   },
 
@@ -1449,8 +1458,11 @@ export const api = {
         });
         
         return {
-          answer: ragResponse.answer || ragResponse.generated_text || 'I apologize, but I cannot provide an answer at the moment.',
-          confidence: ragResponse.confidence || 0.5,
+          answer: {
+            answer: ragResponse.answer || ragResponse.generated_text || 'I apologize, but I cannot provide an answer at the moment.',
+            explanation: ragResponse.answer || ragResponse.generated_text || '',
+            confidence: ragResponse.confidence || 0.5
+          },
           sources: ragResponse.sources || [],
           subject: data.subject,
           question: data.question,
@@ -1458,74 +1470,95 @@ export const api = {
           metadata: {
             rag_used: true,
             sources_count: ragResponse.sources?.length || 0
-          }
+          },
+          // Also include the raw response for compatibility
+          generated_text: ragResponse.generated_text,
+          confidence: ragResponse.confidence || 0.5
         };
       } catch (error) {
         console.error('Error in answerQuestion:', error);
         throw error;
       }
     },
-    // Enhanced AI Tutor - Conversational Interface
+    // Enhanced AI Tutor - Conversational Interface (Backend supported)
     createSession: (data: {
       user_id: string;
       session_name?: string;
       subject?: string;
     }) => {
-      // Since backend doesn't support sessions yet, create a local session
-      // and use RAG pipeline for actual conversations
-      const sessionId = 'local-session-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-      
-      const newSession = {
-        id: sessionId,
-        user_id: data.user_id,
-        session_name: data.session_name || 'AI Tutor Chat',
-        subject: data.subject || 'general',
-        is_active: true,
-        started_at: new Date().toISOString(),
-        last_message_at: new Date().toISOString(),
-        created_at: new Date().toISOString()
-      };
-      
-      // Store session in localStorage for persistence
-      const sessions = JSON.parse(localStorage.getItem('ai-tutor-sessions') || '[]');
-      sessions.unshift(newSession);
-      localStorage.setItem('ai-tutor-sessions', JSON.stringify(sessions));
-      
-      return Promise.resolve({ session: newSession });
+      return fetchAPI<any>('/ai-tutoring/sessions', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }).catch((error) => {
+        // Fallback to localStorage if backend fails
+        console.warn('AI Tutoring sessions API unavailable, using localStorage');
+        const sessionId = 'local-session-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        
+        const newSession = {
+          id: sessionId,
+          user_id: data.user_id,
+          session_name: data.session_name || 'AI Tutor Chat',
+          subject: data.subject || 'general',
+          is_active: true,
+          started_at: new Date().toISOString(),
+          last_message_at: new Date().toISOString(),
+          created_at: new Date().toISOString()
+        };
+        
+        // Store session in localStorage for persistence
+        const sessions = JSON.parse(localStorage.getItem('ai-tutor-sessions') || '[]');
+        sessions.unshift(newSession);
+        localStorage.setItem('ai-tutor-sessions', JSON.stringify(sessions));
+        
+        return { session: newSession };
+      });
     },
     getSessions: (params: {
       user_id: string;
       limit?: number;
       offset?: number;
     }) => {
-      // Get sessions from localStorage since backend doesn't support sessions yet
-      const sessions = JSON.parse(localStorage.getItem('ai-tutor-sessions') || '[]')
-        .filter((session: any) => session.user_id === params.user_id)
-        .sort((a: any, b: any) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
-      
-      const limit = params.limit || 50;
-      const offset = params.offset || 0;
-      const paginatedSessions = sessions.slice(offset, offset + limit);
-      
-      return Promise.resolve({
-        sessions: paginatedSessions,
-        total: sessions.length,
-        limit,
-        offset
-      });
+      const queryParams = new URLSearchParams({ user_id: params.user_id });
+      if (params.limit) queryParams.append('limit', params.limit.toString());
+      if (params.offset) queryParams.append('offset', params.offset.toString());
+
+      return fetchAPI<any>(`/ai-tutoring/sessions?${queryParams}`)
+        .catch((error) => {
+          // Fallback to localStorage
+          const sessions = JSON.parse(localStorage.getItem('ai-tutor-sessions') || '[]')
+            .filter((session: any) => session.user_id === params.user_id)
+            .sort((a: any, b: any) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
+          
+          const limit = params.limit || 50;
+          const offset = params.offset || 0;
+          const paginatedSessions = sessions.slice(offset, offset + limit);
+          
+          return {
+            sessions: paginatedSessions,
+            total: sessions.length,
+            limit,
+            offset
+          };
+        });
     },
     getSessionMessages: (sessionId: string, limit?: number) => {
-      // Get messages from localStorage since backend doesn't support sessions yet
-      const messages = JSON.parse(localStorage.getItem(`ai-tutor-messages-${sessionId}`) || '[]');
-      
-      const limitNum = limit || 100;
-      const paginatedMessages = messages.slice(-limitNum); // Get last N messages
-      
-      return Promise.resolve({
-        messages: paginatedMessages,
-        total: messages.length,
-        session_id: sessionId
-      });
+      const queryParams = new URLSearchParams();
+      if (limit) queryParams.append('limit', limit.toString());
+
+      return fetchAPI<any>(`/ai-tutoring/sessions/${sessionId}/messages?${queryParams}`)
+        .catch((error) => {
+          // Fallback to localStorage
+          const messages = JSON.parse(localStorage.getItem(`ai-tutor-messages-${sessionId}`) || '[]');
+          
+          const limitNum = limit || 100;
+          const paginatedMessages = messages.slice(-limitNum); // Get last N messages
+          
+          return {
+            messages: paginatedMessages,
+            total: messages.length,
+            session_id: sessionId
+          };
+        });
     },
     sendMessage: async (data: {
       session_id: string;
@@ -1535,7 +1568,15 @@ export const api = {
       message_type?: string;
     }) => {
       try {
-        // Store user message locally
+        // Try backend first
+        return await fetchAPI<any>('/ai-tutoring/sessions/message', {
+          method: 'POST',
+          body: JSON.stringify(data),
+        });
+      } catch (error) {
+        console.warn('AI Tutoring message API unavailable, using RAG fallback');
+        
+        // Fallback to RAG + localStorage
         const userMessage = {
           id: 'user-msg-' + Date.now(),
           role: 'student' as const,
@@ -1594,10 +1635,6 @@ export const api = {
         return {
           ai_message: aiMessage
         };
-        
-      } catch (error) {
-        console.error('Error in sendMessage:', error);
-        throw error;
       }
     },
     generateLessonPlan: (data: {
@@ -2020,9 +2057,97 @@ export const api = {
     }
   },
 
-  // Memory Intelligence API
+  // Memory Intelligence API (Enhanced with MemMachine)
   memory: {
-    // Remember context for long-term storage
+    // Store learning session in persistent memory
+    storeSession: (userId: string, sessionData: {
+      session_type: 'chat' | 'quiz' | 'exam' | 'study';
+      subject: string;
+      topic?: string;
+      questions_asked: number;
+      concepts_learned: string[];
+      duration_minutes: number;
+      performance_score?: number;
+      difficulty_level?: string;
+      interactions: Array<{
+        type: 'question' | 'answer' | 'explanation';
+        content: string;
+        timestamp: string;
+        confidence?: number;
+      }>;
+      metadata?: Record<string, any>;
+    }) => {
+      const queryParams = new URLSearchParams({ user_id: userId });
+      return fetchAPI<any>(`/memory/store-session?${queryParams}`, {
+        method: 'POST',
+        body: JSON.stringify(sessionData),
+      }).catch((error) => {
+        console.warn('Memory store session failed, using fallback:', error);
+        // Fallback to localStorage
+        const sessionKey = `memory_session_${userId}_${Date.now()}`;
+        localStorage.setItem(sessionKey, JSON.stringify({
+          ...sessionData,
+          stored_at: new Date().toISOString(),
+          session_id: sessionKey
+        }));
+        return { success: true, session_id: sessionKey };
+      });
+    },
+
+    // Get learning history from persistent memory
+    getLearningHistory: (userId: string) => {
+      return fetchAPI<any>(`/memory/learning-history/${userId}`)
+        .catch((error) => {
+          console.warn('Memory learning history failed, using fallback:', error);
+          // Fallback to localStorage
+          const sessions = [];
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith(`memory_session_${userId}_`)) {
+              try {
+                const session = JSON.parse(localStorage.getItem(key) || '{}');
+                sessions.push(session);
+              } catch (e) {
+                console.warn('Failed to parse session:', e);
+              }
+            }
+          }
+          return { sessions: sessions.sort((a, b) => new Date(b.stored_at).getTime() - new Date(a.stored_at).getTime()) };
+        });
+    },
+
+    // Analyze learning patterns
+    analyzeLearningPatterns: (userId: string) => {
+      return fetchAPI<any>(`/memory/learning-patterns/${userId}`)
+        .catch((error) => {
+          console.warn('Memory learning patterns failed, using fallback:', error);
+          return {
+            patterns: {
+              preferred_subjects: ['mathematics', 'physics'],
+              peak_learning_hours: [14, 15, 16], // 2-4 PM
+              average_session_duration: 25,
+              learning_velocity: 0.7,
+              retention_rate: 0.8
+            }
+          };
+        });
+    },
+
+    // Get memory statistics
+    getMemoryStats: () => {
+      return fetchAPI<any>('/memory/stats')
+        .catch((error) => {
+          console.warn('Memory stats failed, using fallback:', error);
+          return {
+            total_sessions: 0,
+            total_users: 0,
+            storage_usage: '0 MB',
+            avg_session_duration: 0
+          };
+        });
+    },
+
+    // Remember context for long-term storage (existing method)
     remember: (userId: string, contextData: {
       type: 'learning' | 'interaction' | 'preference' | 'navigation' | 'performance' | 'general';
       content: any;
@@ -2298,16 +2423,220 @@ export const api = {
     }
   },
 
+  // Neo4j Knowledge Graph API
+  knowledgeGraph: {
+    // Create concept in knowledge graph
+    createConcept: (conceptName: string) => {
+      const queryParams = new URLSearchParams({ name: conceptName });
+      return fetchAPI<any>(`/knowledge-graph/create-concept?${queryParams}`, {
+        method: 'POST',
+      }).catch((error) => {
+        console.warn('Knowledge graph create concept failed:', error);
+        return { success: false, error: error.message };
+      });
+    },
+
+    // Create relationship between concepts
+    createRelationship: (sourceConcept: string, targetConcept: string, relationshipType: string) => {
+      const queryParams = new URLSearchParams({
+        source_concept: sourceConcept,
+        target_concept: targetConcept,
+        relationship_type: relationshipType
+      });
+      return fetchAPI<any>(`/knowledge-graph/create-relationship?${queryParams}`, {
+        method: 'POST',
+      }).catch((error) => {
+        console.warn('Knowledge graph create relationship failed:', error);
+        return { success: false, error: error.message };
+      });
+    },
+
+    // Find optimal learning path
+    findLearningPath: (userId: string, targetConcept?: string) => {
+      const queryParams = new URLSearchParams();
+      if (targetConcept) queryParams.append('target_concept', targetConcept);
+      
+      return fetchAPI<any>(`/knowledge-graph/learning-path/${userId}?${queryParams}`)
+        .catch((error) => {
+          console.warn('Knowledge graph learning path failed:', error);
+          return {
+            path: [],
+            estimated_duration: 0,
+            difficulty_progression: 'beginner_to_intermediate'
+          };
+        });
+    },
+
+    // Get personalized learning recommendations
+    getRecommendations: (userId: string) => {
+      return fetchAPI<any>(`/knowledge-graph/recommendations/${userId}`)
+        .catch((error) => {
+          console.warn('Knowledge graph recommendations failed:', error);
+          return {
+            recommendations: [
+              {
+                concept: 'quadratic_equations',
+                reason: 'Based on your recent algebra progress',
+                difficulty: 'intermediate',
+                estimated_time: 30
+              }
+            ]
+          };
+        });
+    },
+
+    // Update user progress on a concept
+    updateProgress: (userId: string, conceptName: string, masteryLevel: number) => {
+      const queryParams = new URLSearchParams({
+        user_id: userId,
+        concept_name: conceptName,
+        mastery_level: masteryLevel.toString()
+      });
+      return fetchAPI<any>(`/knowledge-graph/update-progress?${queryParams}`, {
+        method: 'POST',
+      }).catch((error) => {
+        console.warn('Knowledge graph update progress failed:', error);
+        return { success: false, error: error.message };
+      });
+    },
+
+    // Get comprehensive learning statistics
+    getUserStats: (userId: string) => {
+      return fetchAPI<any>(`/knowledge-graph/user-stats/${userId}`)
+        .catch((error) => {
+          console.warn('Knowledge graph user stats failed:', error);
+          return {
+            total_concepts: 0,
+            mastered_concepts: 0,
+            learning_paths_completed: 0,
+            average_mastery: 0.0,
+            subjects: {}
+          };
+        });
+    },
+
+    // Get concept relationships
+    getConceptRelationships: (conceptName: string) => {
+      return fetchAPI<any>(`/knowledge-graph/concept-relationships/${conceptName}`)
+        .catch((error) => {
+          console.warn('Knowledge graph concept relationships failed:', error);
+          return { relationships: [] };
+        });
+    },
+
+    // Analyze knowledge gaps
+    analyzeKnowledgeGaps: (userId: string) => {
+      return fetchAPI<any>(`/knowledge-graph/knowledge-gaps/${userId}`)
+        .catch((error) => {
+          console.warn('Knowledge graph knowledge gaps failed:', error);
+          return {
+            gaps: [],
+            suggestions: []
+          };
+        });
+    },
+
+    // Get graph statistics
+    getGraphStats: () => {
+      return fetchAPI<any>('/knowledge-graph/stats')
+        .catch((error) => {
+          console.warn('Knowledge graph stats failed:', error);
+          return {
+            total_concepts: 0,
+            total_relationships: 0,
+            total_users: 0
+          };
+        });
+    }
+  },
+
+  // Enhanced AI Tutor with Memory Integration
+  enhancedAiTutor: {
+    // Create AI tutor session with memory integration
+    createSession: (userId: string) => {
+      const queryParams = new URLSearchParams({ user_id: userId });
+      return fetchAPI<any>(`/ai-tutor/create-session?${queryParams}`, {
+        method: 'POST',
+      }).catch((error) => {
+        console.warn('Enhanced AI tutor create session failed:', error);
+        return {
+          session_id: `enhanced_session_${Date.now()}`,
+          user_id: userId,
+          created_at: new Date().toISOString()
+        };
+      });
+    },
+
+    // Send message to enhanced AI tutor
+    sendMessage: (sessionId: string, message: string, context?: any) => {
+      const queryParams = new URLSearchParams({ session_id: sessionId });
+      return fetchAPI<any>(`/ai-tutor/send-message?${queryParams}`, {
+        method: 'POST',
+        body: JSON.stringify({ message, context }),
+      }).catch((error) => {
+        console.warn('Enhanced AI tutor send message failed:', error);
+        throw error; // Re-throw to use fallback in ChatInterface
+      });
+    },
+
+    // Get comprehensive learning insights
+    getLearningInsights: (userId: string) => {
+      return fetchAPI<any>(`/ai-tutor/learning-insights/${userId}`)
+        .catch((error) => {
+          console.warn('Enhanced AI tutor learning insights failed:', error);
+          return {
+            insights: {
+              learning_velocity: 0.7,
+              knowledge_retention: 0.8,
+              preferred_learning_style: 'visual',
+              strong_subjects: ['mathematics'],
+              improvement_areas: ['physics']
+            }
+          };
+        });
+    },
+
+    // Create interactive session from chat context
+    createInteractiveSession: (userId: string, chatContext?: any) => {
+      const queryParams = new URLSearchParams({ user_id: userId });
+      return fetchAPI<any>(`/ai-tutor/create-interactive-session?${queryParams}`, {
+        method: 'POST',
+        body: JSON.stringify({ chat_context: chatContext }),
+      }).catch((error) => {
+        console.warn('Enhanced AI tutor create interactive session failed:', error);
+        return {
+          session_id: `interactive_session_${Date.now()}`,
+          user_id: userId,
+          created_at: new Date().toISOString()
+        };
+      });
+    }
+  },
+
   // Notifications System API
   notifications: {
     // Get user notifications
     get: (userId: string) => {
-      return fetchAPI<any>(`/notifications/${userId}`)
+      const queryParams = new URLSearchParams({ user_id: userId });
+      return fetchAPI<any>(`/notifications?${queryParams}`)
         .catch((error) => {
           // Fallback to localStorage
           const localNotifications = JSON.parse(localStorage.getItem(`notifications_${userId}`) || '[]');
           return {
             notifications: localNotifications,
+            unread_count: localNotifications.filter((n: any) => !n.read).length
+          };
+        });
+    },
+
+    // Get unread count
+    getUnreadCount: (userId: string) => {
+      const queryParams = new URLSearchParams({ user_id: userId });
+      return fetchAPI<any>(`/notifications/unread-count?${queryParams}`)
+        .catch((error) => {
+          // Fallback to localStorage
+          const localNotifications = JSON.parse(localStorage.getItem(`notifications_${userId}`) || '[]');
+          return {
             unread_count: localNotifications.filter((n: any) => !n.read).length
           };
         });
@@ -2326,7 +2655,8 @@ export const api = {
       dismiss_after?: number;
       importance?: number;
     }) => {
-      return fetchAPI<any>(`/notifications/${userId}`, {
+      const queryParams = new URLSearchParams({ user_id: userId });
+      return fetchAPI<any>(`/notifications?${queryParams}`, {
         method: 'POST',
         body: JSON.stringify(notificationData),
       }).catch((error) => {
@@ -2345,15 +2675,17 @@ export const api = {
       });
     },
 
-    // Dismiss a notification
-    dismiss: (notificationId: string, userId: string) => {
+    // Mark notification as read
+    markAsRead: (notificationId: string, userId: string) => {
       const queryParams = new URLSearchParams({ user_id: userId });
-      return fetchAPI<any>(`/notifications/${notificationId}/dismiss?${queryParams}`, {
+      return fetchAPI<any>(`/notifications/${notificationId}/read?${queryParams}`, {
         method: 'POST',
       }).catch((error) => {
         // Fallback to localStorage
         const localNotifications = JSON.parse(localStorage.getItem(`notifications_${userId}`) || '[]');
-        const updatedNotifications = localNotifications.filter((n: any) => n.id !== notificationId);
+        const updatedNotifications = localNotifications.map((n: any) => 
+          n.id === notificationId ? { ...n, read: true } : n
+        );
         localStorage.setItem(`notifications_${userId}`, JSON.stringify(updatedNotifications));
         return { success: true };
       });
@@ -2361,7 +2693,8 @@ export const api = {
 
     // Mark all as read
     markAllRead: (userId: string) => {
-      return fetchAPI<any>(`/notifications/${userId}/mark-read`, {
+      const queryParams = new URLSearchParams({ user_id: userId });
+      return fetchAPI<any>(`/notifications/read-all?${queryParams}`, {
         method: 'POST',
       }).catch((error) => {
         // Fallback to localStorage
@@ -2370,6 +2703,17 @@ export const api = {
         localStorage.setItem(`notifications_${userId}`, JSON.stringify(updatedNotifications));
         return { success: true };
       });
+    },
+
+    // Admin notifications
+    getAdminNotifications: () => {
+      return fetchAPI<any>('/notifications/admin');
+    },
+
+    // Teacher notifications
+    getTeacherNotifications: (teacherId: string) => {
+      const queryParams = new URLSearchParams({ teacher_id: teacherId });
+      return fetchAPI<any>(`/notifications/teacher?${queryParams}`);
     }
   },
 

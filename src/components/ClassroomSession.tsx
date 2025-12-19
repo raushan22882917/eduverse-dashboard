@@ -69,6 +69,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { generateSessionId, generateSessionName, formatSessionNameForDisplay } from '@/utils/sessionNaming';
 import {
   Dialog,
   DialogContent,
@@ -86,6 +87,7 @@ import {
 
 interface StudySession {
   id: string;
+  sessionName: string; // New field for session name (e.g., "MAT", "PHY")
   subject: string;
   topic: string;
   startTime: Date;
@@ -213,6 +215,7 @@ const ClassroomSession = ({ className }: ClassroomSessionProps) => {
       // Convert memory contexts to session format
       const sessions = memoryData.contexts?.map((context: any) => ({
         id: context.memory_id,
+        sessionName: context.content.session_name || generateSessionName(context.topic || 'General Study'),
         subject: context.subject || 'general',
         topic: context.topic || 'General Study',
         startTime: new Date(context.timestamp),
@@ -298,9 +301,12 @@ const ClassroomSession = ({ className }: ClassroomSessionProps) => {
   };
 
   const startSessionDirectly = async () => {
+    const sessionName = generateSessionName(selectedTopic);
+    const sessionId = generateSessionId(selectedTopic);
 
     const newSession: StudySession = {
-      id: `session-${Date.now()}`,
+      id: sessionId,
+      sessionName: sessionName,
       subject: selectedSubject,
       topic: selectedTopic,
       startTime: new Date(),
@@ -415,6 +421,7 @@ const ClassroomSession = ({ className }: ClassroomSessionProps) => {
         type: 'learning',
         content: {
           action: 'session_complete',
+          session_name: completedSession.sessionName,
           subject: selectedSubject,
           topic: selectedTopic,
           start_time: currentSession.startTime.toISOString(),
@@ -429,7 +436,7 @@ const ClassroomSession = ({ className }: ClassroomSessionProps) => {
         subject: selectedSubject,
         topic: selectedTopic,
         importance: 0.9,
-        tags: ['session_complete', 'study', 'performance'],
+        tags: ['session_complete', 'study', 'performance', completedSession.sessionName],
         source: 'classroom_session',
         component: 'study_session'
       });
@@ -1196,7 +1203,11 @@ const ClassroomSession = ({ className }: ClassroomSessionProps) => {
                 <div>
                   <h3 className="font-semibold flex items-center gap-2">
                     <span className={cn("w-3 h-3 rounded-full", getSubjectColor(currentSession.subject))} />
-                    {getSubjectIcon(currentSession.subject)} {currentSession.topic}
+                    {getSubjectIcon(currentSession.subject)} 
+                    <Badge variant="outline" className="text-xs font-mono">
+                      {formatSessionNameForDisplay(currentSession.sessionName)}
+                    </Badge>
+                    {currentSession.topic}
                   </h3>
                   <p className="text-sm text-muted-foreground">
                     {subjects.find(s => s.id === currentSession.subject)?.name}
@@ -1350,7 +1361,11 @@ const ClassroomSession = ({ className }: ClassroomSessionProps) => {
                         <div className="flex items-center justify-between">
                           <div>
                             <CardTitle className="text-base flex items-center gap-2">
-                              {getSubjectIcon(session.subject)} {session.topic}
+                              {getSubjectIcon(session.subject)} 
+                              <Badge variant="outline" className="text-xs font-mono">
+                                {formatSessionNameForDisplay(session.sessionName)}
+                              </Badge>
+                              {session.topic}
                             </CardTitle>
                             <CardDescription>
                               {subjects.find(s => s.id === session.subject)?.name} • {session.startTime.toLocaleDateString()}
@@ -1559,7 +1574,11 @@ const ClassroomSession = ({ className }: ClassroomSessionProps) => {
                           <div className="flex items-center justify-between">
                             <div className="flex-1">
                               <CardTitle className="text-base flex items-center gap-2">
-                                {getSubjectIcon(session.subject)} {session.topic}
+                                {getSubjectIcon(session.subject)} 
+                                <Badge variant="outline" className="text-xs font-mono">
+                                  {formatSessionNameForDisplay(session.sessionName)}
+                                </Badge>
+                                {session.topic}
                                 {selectedRevisionSession?.id === session.id && (
                                   <Badge variant="default" className="ml-2">Selected</Badge>
                                 )}
