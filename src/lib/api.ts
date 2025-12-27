@@ -828,7 +828,11 @@ export const api = {
     }) => {
       const queryParams = new URLSearchParams({ query: params.query });
       if (params.max_results) queryParams.append('max_results', params.max_results.toString());
-      return fetchAPI<any[]>(`/videos/search/youtube?${queryParams}`);
+      return fetchAPI<any[]>(`/videos/search/youtube?${queryParams}`)
+        .catch((error) => {
+          console.warn('YouTube search API unavailable, returning empty results:', error.message);
+          return [];
+        });
     },
   },
 
