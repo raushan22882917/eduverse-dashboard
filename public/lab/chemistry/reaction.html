@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>3D Lab: Molecular Titration</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --secondary: #10b981;
+            --accent: #8b5cf6;
+            --text-main: #1e293b;
+            --text-sub: #64748b;
+            --sidebar-width: 440px;
+            --active-bg: #eff6ff;
+        }
+
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            font-family: 'Inter', -apple-system, sans-serif; 
+            background: transparent; 
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            touch-action: none;
+        }
+
+        /* Main 3D Visualization Area - 90% */
+        #main-visualizer {
+            flex: 1;
+            width: 100%;
+            position: relative;
+            background: transparent;
+            cursor: grab;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 90vh;
+        }
+
+        /* Bottom Steps Panel - 10% */
+        #bottom-steps-panel {
+            height: 10vh;
+            width: 100%;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            box-sizing: border-box;
+            z-index: 10;
+            border-top: 1px solid rgba(241, 245, 249, 0.5);
+            position: relative;
+        }
+
+        #main-visualizer:active { cursor: grabbing; }
+
+        /* Horizontal Step Tracker in Bottom Panel */
+        .steps-container {
+            display: flex;
+            gap: 15px;
+            flex: 1;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .step-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            opacity: 0.5;
+            border: 1px solid transparent;
+            min-width: 120px;
+            background: rgba(248, 250, 252, 0.8);
+        }
+
+        .step-item.active {
+            opacity: 1;
+            background: var(--active-bg);
+            border-color: #dbeafe;
+        }
+
+        .step-item.completed {
+            opacity: 0.8;
+        }
+
+        .step-number {
+            width: 24px;
+            height: 24px;
+            background: #f1f5f9;
+            color: var(--text-sub);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 800;
+            flex-shrink: 0;
+        }
+
+        .active .step-number {
+            background: var(--primary);
+            color: white;
+        }
+
+        .completed .step-number {
+            background: var(--secondary);
+            color: white;
+        }
+
+        .step-content h4 {
+            margin: 0;
+            font-size: 12px;
+            color: var(--text-main);
+            font-weight: 600;
+        }
+
+        .step-content p {
+            margin: 0;
+            font-size: 10px;
+            color: var(--text-sub);
+            line-height: 1.3;
+        }
+
+        /* Bottom Panel Layout */
+        .bottom-content {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            width: 100%;
+        }
+
+        .experiment-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .experiment-info h2 {
+            margin: 0;
+            font-size: 16px;
+            color: var(--text-main);
+            font-weight: 700;
+        }
+
+        .active-description {
+            background: rgba(248, 250, 252, 0.9);
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(241, 245, 249, 0.8);
+            min-width: 200px;
+        }
+
+        .formula-display {
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--primary);
+            margin-bottom: 4px;
+            display: block;
+        }
+
+        .btn-group { 
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        button {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            background: var(--text-main);
+            color: white;
+            white-space: nowrap;
+        }
+
+        button:hover { 
+            transform: translateY(-2px); 
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            background: #000000;
+        }
+        
+        button:disabled { background: #e2e8f0; color: #94a3b8; cursor: not-allowed; transform: none !important; }
+
+        /* Molecule Labels */
+        .atom-label {
+            position: absolute;
+            color: white;
+            font-weight: 900;
+            font-size: 14px;
+            pointer-events: none;
+            text-shadow: 0px 1px 3px rgba(0,0,0,0.8);
+            transform: translate(-50%, -50%);
+            z-index: 20;
+        }
+
+        /* Top Proceed Button */
+        #top-proceed-btn {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            z-index: 15;
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-weight: 700;
+            font-size: 12px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3);
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        #top-proceed-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
+            background: linear-gradient(135deg, #1d4ed8, #1e40af);
+        }
+
+        #top-proceed-btn:disabled {
+            background: #94a3b8;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        /* Detailed Steps in Bottom Panel */
+        .detailed-steps {
+            display: flex;
+            gap: 8px;
+            flex: 1;
+            align-items: center;
+            justify-content: center;
+            overflow-x: auto;
+            padding: 0 10px;
+        }
+
+        .mini-step {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            padding: 6px 8px;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            opacity: 0.4;
+            border: 1px solid transparent;
+            min-width: 80px;
+            background: rgba(248, 250, 252, 0.6);
+            text-align: center;
+        }
+        .mini-step.active {
+            opacity: 1;
+            background: rgba(37, 99, 235, 0.1);
+            border-color: #2563eb;
+            transform: scale(1.05);
+        }
+
+        .mini-step.completed {
+            opacity: 0.8;
+            background: rgba(16, 185, 129, 0.1);
+            border-color: #10b981;
+        }
+
+        .mini-step-number {
+            width: 20px;
+            height: 20px;
+            background: #e2e8f0;
+            color: #64748b;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 9px;
+            font-weight: 800;
+            flex-shrink: 0;
+        }
+
+        .mini-step.active .mini-step-number {
+            background: #2563eb;
+            color: white;
+        }
+
+        .mini-step.completed .mini-step-number {
+            background: #10b981;
+            color: white;
+        }
+
+        .mini-step-title {
+            font-size: 8px;
+            font-weight: 700;
+            color: var(--text-main);
+            line-height: 1.2;
+            margin: 0;
+        }
+
+        .mini-step-desc {
+            font-size: 7px;
+            color: var(--text-sub);
+            line-height: 1.1;
+            margin: 0;
+        }
+
+        #reaction-map {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 8px 20px;
+            border-radius: 20px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            backdrop-filter: blur(10px);
+            z-index: 5;
+            border: 1px solid rgba(255,255,255,0.8);
+        }
+
+        .map-item { font-weight: 700; color: var(--text-main); font-size: 14px; }
+        .map-plus, .map-arrow { color: var(--text-sub); font-size: 16px; }
+
+        #molecule-label {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(30, 41, 59, 0.9);
+            color: white;
+            padding: 6px 15px;
+            border-radius: 15px;
+            font-size: 11px;
+            font-weight: 600;
+            backdrop-filter: blur(10px);
+        }
+
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+
+<div id="main-visualizer">
+    <div id="labels-container"></div>
+    
+    <!-- Top Proceed Button -->
+    <button id="top-proceed-btn">
+        <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+        </svg>
+        Next Step
+    </button>
+    
+    <div id="reaction-map">
+        <div class="map-item" id="m-left">C₂H₂O₄</div>
+        <div class="map-plus" id="m-op">+</div>
+        <div class="map-item" id="m-right">?</div>
+        <div class="map-arrow">→</div>
+        <div class="map-item" id="m-out">Pending</div>
+    </div>
+    
+    <div id="molecule-label">Oxalic Acid Structure (Touch/Drag to Rotate)</div>
+</div>
+
+<div id="bottom-steps-panel">
+    <div class="bottom-content">
+        <div class="experiment-info">
+            <h2>Molecular Titration</h2>
+        </div>
+        
+        <div class="detailed-steps">
+            <!-- Step 1: Preparation -->
+            <div id="mini-step-1a" class="mini-step active">
+                <div class="mini-step-number">1a</div>
+                <h5 class="mini-step-title">Setup Flask</h5>
+                <p class="mini-step-desc">Clean conical flask</p>
+            </div>
+            <div id="mini-step-1b" class="mini-step">
+                <div class="mini-step-number">1b</div>
+                <h5 class="mini-step-title">Add Oxalic Acid</h5>
+                <p class="mini-step-desc">Measure 0.1M solution</p>
+            </div>
+            <div id="mini-step-1c" class="mini-step">
+                <div class="mini-step-number">1c</div>
+                <h5 class="mini-step-title">Add Indicator</h5>
+                <p class="mini-step-desc">2-3 drops phenolphthalein</p>
+            </div>
+            
+            <!-- Step 2: Acidification -->
+            <div id="mini-step-2a" class="mini-step">
+                <div class="mini-step-number">2a</div>
+                <h5 class="mini-step-title">Heat Solution</h5>
+                <p class="mini-step-desc">Warm to 60-70°C</p>
+            </div>
+            <div id="mini-step-2b" class="mini-step">
+                <div class="mini-step-number">2b</div>
+                <h5 class="mini-step-title">Add H₂SO₄</h5>
+                <p class="mini-step-desc">10mL dilute acid</p>
+            </div>
+            <div id="mini-step-2c" class="mini-step">
+                <div class="mini-step-number">2c</div>
+                <h5 class="mini-step-title">Mix Well</h5>
+                <p class="mini-step-desc">Swirl gently</p>
+            </div>
+            
+            <!-- Step 3: Titration -->
+            <div id="mini-step-3a" class="mini-step">
+                <div class="mini-step-number">3a</div>
+                <h5 class="mini-step-title">Fill Burette</h5>
+                <p class="mini-step-desc">0.02M KMnO₄</p>
+            </div>
+            <div id="mini-step-3b" class="mini-step">
+                <div class="mini-step-number">3b</div>
+                <h5 class="mini-step-title">Note Reading</h5>
+                <p class="mini-step-desc">Initial volume</p>
+            </div>
+            <div id="mini-step-3c" class="mini-step">
+                <div class="mini-step-number">3c</div>
+                <h5 class="mini-step-title">Add Drop by Drop</h5>
+                <p class="mini-step-desc">Slow addition</p>
+            </div>
+            <div id="mini-step-3d" class="mini-step">
+                <div class="mini-step-number">3d</div>
+                <h5 class="mini-step-title">Swirl Flask</h5>
+                <p class="mini-step-desc">Continuous mixing</p>
+            </div>
+            
+            <!-- Step 4: Endpoint -->
+            <div id="mini-step-4a" class="mini-step">
+                <div class="mini-step-number">4a</div>
+                <h5 class="mini-step-title">Watch Color</h5>
+                <p class="mini-step-desc">Pink appears</p>
+            </div>
+            <div id="mini-step-4b" class="mini-step">
+                <div class="mini-step-number">4b</div>
+                <h5 class="mini-step-title">Stop Addition</h5>
+                <p class="mini-step-desc">Persistent pink</p>
+            </div>
+            <div id="mini-step-4c" class="mini-step">
+                <div class="mini-step-number">4c</div>
+                <h5 class="mini-step-title">Record Volume</h5>
+                <p class="mini-step-desc">Final reading</p>
+            </div>
+            <div id="mini-step-4d" class="mini-step">
+                <div class="mini-step-number">4d</div>
+                <h5 class="mini-step-title">Calculate</h5>
+                <p class="mini-step-desc">Concentration</p>
+            </div>
+        </div>
+
+        <div class="active-description">
+            <span class="formula-display" id="formula-box">C₂H₂O₄</span>
+            <p id="step-desc" style="font-size: 10px; margin: 0;">Setup clean conical flask for titration</p>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script>
+    const MOLECULES = {
+        oxalic: {
+            atoms: [
+                {element: 'C', x: -0.6, y: 0.2, z: 0},
+                {element: 'C', x: 0.6, y: -0.2, z: 0},
+                {element: 'O', x: -0.6, y: 1.4, z: 0},
+                {element: 'O', x: -1.7, y: -0.5, z: 0},
+                {element: 'O', x: 0.6, y: -1.4, z: 0},
+                {element: 'O', x: 1.7, y: 0.5, z: 0},
+                {element: 'H', x: -2.5, y: -0.1, z: 0},
+                {element: 'H', x: 2.5, y: 0.1, z: 0}
+            ],
+            bonds: [
+                {from: 0, to: 1}, {from: 0, to: 2}, {from: 0, to: 3},
+                {from: 1, to: 4}, {from: 1, to: 5}, {from: 3, to: 6}, {from: 5, to: 7}
+            ]
+        },
+        permanganate: {
+            atoms: [
+                {element: 'Mn', x: 0, y: 0, z: 0},
+                {element: 'O', x: 0, y: 1.4, z: 0},
+                {element: 'O', x: 1.2, y: -0.5, z: 0.7},
+                {element: 'O', x: -1.2, y: -0.5, z: 0.7},
+                {element: 'O', x: 0, y: -0.5, z: -1.4}
+            ],
+            bonds: [{from:0, to:1}, {from:0, to:2}, {from:0, to:3}, {from:0, to:4}]
+        },
+        co2: {
+            atoms: [
+                {element: 'C', x: 0, y: 0, z: 0},
+                {element: 'O', x: -1.2, y: 0, z: 0},
+                {element: 'O', x: 1.2, y: 0, z: 0}
+            ],
+            bonds: [{from: 0, to: 1}, {from: 0, to: 2}]
+        }
+    };
+
+    const container = document.getElementById('main-visualizer');
+    const labelsContainer = document.getElementById('labels-container');
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(40, container.clientWidth / container.clientHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setClearColor(0x000000, 0); // Transparent background
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    container.appendChild(renderer.domElement);
+
+    const ambient = new THREE.AmbientLight(0xffffff, 0.9);
+    scene.add(ambient);
+    const light = new THREE.DirectionalLight(0xffffff, 0.5);
+    light.position.set(5, 10, 7);
+    scene.add(light);
+
+    const mainWorld = new THREE.Group();
+    scene.add(mainWorld);
+
+    const labGroup = new THREE.Group();
+    const molGroup = new THREE.Group();
+    mainWorld.add(labGroup);
+    mainWorld.add(molGroup);
+
+    labGroup.position.set(-2.5, -0.5, 0);
+    molGroup.position.set(2.5, 0, 0);
+
+    const glassMat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, transparent: true, opacity: 0.15, transmission: 0.9, roughness: 0.1, thickness: 0.5 });
+    const flask = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.9, 2.2, 32), glassMat);
+    labGroup.add(flask);
+
+    const liquidMat = new THREE.MeshPhongMaterial({ color: 0xffffff, transparent: true, opacity: 0 });
+    const liquid = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.8, 0.8, 32), liquidMat);
+    liquid.position.y = -0.65;
+    labGroup.add(liquid);
+
+    let atomMeshes = [];
+
+    function buildMolecule(data, offset = {x:0, y:0, z:0}) {
+        const localGroup = new THREE.Group();
+        const colors = { 'C': 0x334155, 'O': 0xef4444, 'H': 0xcccccc, 'Mn': 0x8b5cf6 };
+        
+        data.atoms.forEach(a => {
+            const sphere = new THREE.Mesh(
+                new THREE.SphereGeometry(a.element === 'H' ? 0.15 : (a.element === 'Mn' ? 0.5 : 0.3), 32, 32),
+                new THREE.MeshStandardMaterial({ color: colors[a.element] || 0x777777, roughness: 0.3, metalness: 0.1 })
+            );
+            sphere.position.set(a.x + offset.x, a.y + offset.y, a.z + offset.z);
+            sphere.userData = { element: a.element };
+            localGroup.add(sphere);
+            atomMeshes.push(sphere);
+            
+            const label = document.createElement('div');
+            label.className = 'atom-label';
+            label.textContent = a.element;
+            label.id = `label-${atomMeshes.length - 1}`;
+            labelsContainer.appendChild(label);
+        });
+
+        data.bonds.forEach(b => {
+            const s = new THREE.Vector3(data.atoms[b.from].x + offset.x, data.atoms[b.from].y + offset.y, data.atoms[b.from].z + offset.z);
+            const e = new THREE.Vector3(data.atoms[b.to].x + offset.x, data.atoms[b.to].y + offset.y, data.atoms[b.to].z + offset.z);
+            const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, s.distanceTo(e), 16), new THREE.MeshStandardMaterial({ color: 0xe2e8f0 }));
+            stick.position.copy(s).lerp(e, 0.5);
+            stick.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), e.clone().sub(s).normalize());
+            localGroup.add(stick);
+        });
+        return localGroup;
+    }
+
+    let step = 1;
+    let currentMiniStep = 1; // Track current mini-step (1a, 1b, 1c, etc.)
+
+    const miniStepData = {
+        '1a': { title: 'Setup Flask', desc: 'Clean conical flask for titration', formula: 'C₂H₂O₄' },
+        '1b': { title: 'Add Oxalic Acid', desc: 'Measure 25mL of 0.1M oxalic acid solution', formula: 'C₂H₂O₄' },
+        '1c': { title: 'Add Indicator', desc: 'Add 2-3 drops of phenolphthalein indicator', formula: 'C₂H₂O₄' },
+        '2a': { title: 'Heat Solution', desc: 'Warm the solution to 60-70°C', formula: 'H₂SO₄' },
+        '2b': { title: 'Add H₂SO₄', desc: 'Add 10mL of dilute sulfuric acid', formula: 'H₂SO₄' },
+        '2c': { title: 'Mix Well', desc: 'Swirl the flask gently to mix', formula: 'H₂SO₄' },
+        '3a': { title: 'Fill Burette', desc: 'Fill burette with 0.02M KMnO₄ solution', formula: 'KMnO₄' },
+        '3b': { title: 'Note Reading', desc: 'Record initial burette reading', formula: 'KMnO₄' },
+        '3c': { title: 'Add Drop by Drop', desc: 'Add KMnO₄ slowly with constant swirling', formula: 'KMnO₄' },
+        '3d': { title: 'Swirl Flask', desc: 'Continue mixing until color disappears', formula: 'KMnO₄' },
+        '4a': { title: 'Watch Color', desc: 'Observe for permanent pink color', formula: 'Mn²⁺ + CO₂' },
+        '4b': { title: 'Stop Addition', desc: 'Stop when pink color persists for 30 seconds', formula: 'Mn²⁺ + CO₂' },
+        '4c': { title: 'Record Volume', desc: 'Note final burette reading', formula: 'Mn²⁺ + CO₂' },
+        '4d': { title: 'Calculate', desc: 'Calculate concentration using titration formula', formula: 'Mn²⁺ + CO₂' }
+    };
+
+    const miniStepOrder = ['1a', '1b', '1c', '2a', '2b', '2c', '3a', '3b', '3c', '3d', '4a', '4b', '4c', '4d'];
+    let currentMiniStepIndex = 0;
+
+    const updateStep = () => {
+        const btn = document.getElementById('main-btn');
+        const topBtn = document.getElementById('top-proceed-btn');
+        const desc = document.getElementById('step-desc');
+        const formula = document.getElementById('formula-box');
+        const label = document.getElementById('molecule-label');
+        
+        // Update mini-steps
+        const currentMiniStepId = miniStepOrder[currentMiniStepIndex];
+        const currentData = miniStepData[currentMiniStepId];
+        
+        // Reset all mini-steps
+        miniStepOrder.forEach((stepId, index) => {
+            const element = document.getElementById(`mini-step-${stepId}`);
+            if (element) {
+                element.className = 'mini-step';
+                if (index < currentMiniStepIndex) {
+                    element.classList.add('completed');
+                } else if (index === currentMiniStepIndex) {
+                    element.classList.add('active');
+                }
+            }
+        });
+
+        // Update description and formula
+        if (currentData) {
+            if (desc) desc.innerText = currentData.desc;
+            if (formula) formula.innerText = currentData.formula;
+            
+            // Update both buttons if they exist
+            if (topBtn) {
+                topBtn.innerText = currentMiniStepIndex < miniStepOrder.length - 1 ? 'Next Step' : 'Complete';
+                topBtn.disabled = false;
+            }
+            
+            if (btn) {
+                btn.innerText = currentMiniStepIndex < miniStepOrder.length - 1 ? 'Next Step' : 'Complete';
+                btn.disabled = false;
+            }
+        }
+
+        // Update 3D visualization based on major step
+        const majorStep = Math.ceil((currentMiniStepIndex + 1) / 3.5); // Rough grouping
+        
+        while(molGroup.children.length > 0) molGroup.remove(molGroup.children[0]);
+        labelsContainer.innerHTML = '';
+        atomMeshes = [];
+
+        if (majorStep === 1) {
+            molGroup.add(buildMolecule(MOLECULES.oxalic));
+            const leftEl = document.getElementById('m-left');
+            const rightEl = document.getElementById('m-right');
+            const outEl = document.getElementById('m-out');
+            
+            if (leftEl) leftEl.innerText = "C₂H₂O₄";
+            if (rightEl) rightEl.innerText = "?";
+            if (outEl) outEl.innerText = "Preparing";
+            if (label) label.innerText = "Oxalic Acid Structure (Drag to Rotate)";
+        } else if (majorStep === 2) {
+            liquidMat.opacity = 0.5;
+            molGroup.add(buildMolecule(MOLECULES.oxalic, {x:0, y:0.8, z:0}));
+            molGroup.add(buildMolecule({atoms:[{element:'H',x:0,y:0,z:0}], bonds:[]}, {x:0, y:-1, z:0}));
+            const rightEl = document.getElementById('m-right');
+            const outEl = document.getElementById('m-out');
+            
+            if (rightEl) rightEl.innerText = "H₂SO₄";
+            if (outEl) outEl.innerText = "Acidifying";
+            if (label) label.innerText = "Acidic Solution (Heating Phase)";
+        } else if (majorStep === 3) {
+            molGroup.add(buildMolecule(MOLECULES.oxalic, {x:-1, y:0, z:0}));
+            molGroup.add(buildMolecule(MOLECULES.permanganate, {x:1.2, y:0, z:0}));
+            const leftEl = document.getElementById('m-left');
+            const rightEl = document.getElementById('m-right');
+            const outEl = document.getElementById('m-out');
+            
+            if (leftEl) leftEl.innerText = "C₂O₄²⁻";
+            if (rightEl) rightEl.innerText = "MnO₄⁻";
+            if (outEl) outEl.innerText = "Titrating";
+            if (label) label.innerText = "Reactants: Oxalate + Permanganate";
+        } else if (majorStep >= 4) {
+            molGroup.add(buildMolecule(MOLECULES.co2, {x:-1, y:0.5, z:0}));
+            molGroup.add(buildMolecule(MOLECULES.co2, {x:1, y:-0.5, z:0}));
+            molGroup.add(buildMolecule({atoms:[{element:'Mn',x:0,y:0,z:0}], bonds:[]}, {x:0, y:0, z:0.5}));
+            const outEl = document.getElementById('m-out');
+            
+            if (outEl) outEl.innerText = "Mn²⁺ + CO₂";
+            if (label) label.innerText = "Products: Manganese(II) + Carbon Dioxide";
+        }
+    };
+
+    function updateLabels() {
+        const widthHalf = container.clientWidth / 2;
+        const heightHalf = container.clientHeight / 2;
+
+        atomMeshes.forEach((mesh, index) => {
+            const vector = new THREE.Vector3();
+            mesh.getWorldPosition(vector);
+            vector.project(camera);
+
+            const x = (vector.x * widthHalf) + widthHalf;
+            const y = -(vector.y * heightHalf) + heightHalf;
+
+            const label = document.getElementById(`label-${index}`);
+            if (label) {
+                if (vector.z < 1) {
+                    label.style.display = 'block';
+                    label.style.left = `${x}px`;
+                    label.style.top = `${y}px`;
+                    label.style.opacity = mesh.userData.element === 'H' ? 0.7 : 1;
+                } else {
+                    label.style.display = 'none';
+                }
+            }
+        });
+    }
+
+    // --- Interaction Logic (Hand/Mouse Controls) ---
+    let isDragging = false;
+    let prevMouseX = 0;
+    let prevMouseY = 0;
+    let autoRotate = true;
+
+    const onStart = (e) => {
+        isDragging = true;
+        autoRotate = false;
+        const x = e.touches ? e.touches[0].clientX : e.clientX;
+        const y = e.touches ? e.touches[0].clientY : e.clientY;
+        prevMouseX = x;
+        prevMouseY = y;
+    };
+
+    const onMove = (e) => {
+        if (!isDragging) return;
+        const x = e.touches ? e.touches[0].clientX : e.clientX;
+        const y = e.touches ? e.touches[0].clientY : e.clientY;
+        
+        const deltaX = x - prevMouseX;
+        const deltaY = y - prevMouseY;
+
+        mainWorld.rotation.y += deltaX * 0.01;
+        mainWorld.rotation.x += deltaY * 0.01;
+
+        prevMouseX = x;
+        prevMouseY = y;
+    };
+
+    const onEnd = () => { isDragging = false; };
+
+    container.addEventListener('mousedown', onStart);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onEnd);
+
+    container.addEventListener('touchstart', onStart);
+    window.addEventListener('touchmove', onMove);
+    window.addEventListener('touchend', onEnd);
+
+    // Zoom Logic
+    window.addEventListener('wheel', (e) => {
+        camera.position.z = Math.max(3, Math.min(15, camera.position.z + e.deltaY * 0.01));
+    });
+
+    // Button click handlers
+    const proceedToNextStep = () => {
+        if (currentMiniStepIndex < miniStepOrder.length - 1) {
+            currentMiniStepIndex++;
+            updateStep();
+        } else {
+            // Restart experiment
+            currentMiniStepIndex = 0;
+            updateStep();
+        }
+    };
+
+    // Wait for DOM to be fully loaded before setting up event listeners
+    window.addEventListener('DOMContentLoaded', () => {
+        // Set up main button if it exists
+        const mainBtn = document.getElementById('main-btn');
+        if (mainBtn) {
+            mainBtn.onclick = proceedToNextStep;
+        }
+        
+        // Set up top proceed button
+        const topBtn = document.getElementById('top-proceed-btn');
+        if (topBtn) {
+            topBtn.onclick = proceedToNextStep;
+        }
+        
+        // Initialize the experiment
+        updateStep();
+    });
+
+    camera.position.set(0, 0, 8);
+    
+    function animate() {
+        requestAnimationFrame(animate);
+        if (autoRotate) {
+            molGroup.rotation.y += 0.005;
+        }
+        updateLabels();
+        renderer.render(scene, camera);
+    }
+
+    // Start animation loop
+    animate();
+
+    window.addEventListener('resize', () => {
+        camera.aspect = container.clientWidth / container.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(container.clientWidth, container.clientHeight);
+    });
+</script>
+</body>
+</html>

@@ -203,7 +203,7 @@ Focus on biological concepts and life processes.`
       console.log('Attempting Gemini API call for drawing analysis...');
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
       const enhancedPrompt = `${analysisPrompt}
 

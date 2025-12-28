@@ -1,10 +1,10 @@
 /**
- * Comprehensive API client for backend services
+ * Optimized API client for backend services
  */
 
-// Determine API base URL:
+// Determine API base URL with flexible environment handling:
 // 1. Use VITE_API_BASE_URL if explicitly set
-// 2. In development (localhost), use local backend
+// 2. In development (localhost), check for local backend first, then use proxy
 // 3. In production, use the Google Cloud Run backend directly
 const getApiBaseUrl = () => {
   if (import.meta.env.VITE_API_BASE_URL) {
@@ -13,14 +13,23 @@ const getApiBaseUrl = () => {
 
   // Check if we're in development (localhost)
   if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
-    return 'http://localhost:8000/api';
+    // Check if VITE_USE_LOCAL_BACKEND is set to prefer local backend
+    if (import.meta.env.VITE_USE_LOCAL_BACKEND === 'true') {
+      return 'http://localhost:8000/api';
+    }
+    // Otherwise use Vite proxy to avoid CORS issues with remote backend
+    return '/api';
   }
 
   // Production: use Google Cloud Run backend directly
-  return 'https://classroom-backend-121270846496.us-central1.run.app/api';
+  return 'https://classroom-backend-821372121985.us-central1.run.app/api';
 };
 
 const API_BASE_URL = getApiBaseUrl();
+
+// Request cache for deduplication
+const requestCache = new Map<string, Promise<any>>();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 export class APIError extends Error {
   constructor(
@@ -55,11 +64,25 @@ async function fetchAPI<T>(
     } catch {
       errorData = { detail: `HTTP ${response.status}: ${response.statusText}` };
     }
+    
     // Handle both old format (detail) and new format (error.message)
     let errorMessage = errorData.error?.message || errorData.detail || `HTTP ${response.status}: ${response.statusText}`;
 
     // Provide more helpful error messages for common issues
-    if (response.status === 404) {
+    if (response.status === 400) {
+      // Bad Request - validation errors
+      if (errorData.detail && Array.isArray(errorData.detail)) {
+        // Pydantic validation errors
+        const validationErrors = errorData.detail.map((err: any) => 
+          `${err.loc?.join('.')}: ${err.msg}`
+        ).join(', ');
+        errorMessage = `Validation error: ${validationErrors}`;
+      } else if (errorData.detail) {
+        errorMessage = `Invalid input: ${errorData.detail}`;
+      } else {
+        errorMessage = "Invalid input provided";
+      }
+    } else if (response.status === 404) {
       errorMessage = `Endpoint not found: ${endpoint}`;
       // Emit custom event for API error handling
       if (typeof window !== 'undefined') {
@@ -1088,43 +1111,6 @@ export const api = {
       const query = queryParams.toString();
       return fetchAPI<any>(`/content/by-folder${query ? `?${query}` : ''}`);
     },
-    listAllContent: (params?: {
-      subject?: string;
-      content_type?: string;
-      processing_status?: string;
-      limit?: number;
-      offset?: number;
-    }) => {
-      const queryParams = new URLSearchParams();
-      if (params?.subject) queryParams.append('subject', params.subject);
-      if (params?.content_type) queryParams.append('content_type', params.content_type);
-      if (params?.processing_status) queryParams.append('processing_status', params.processing_status);
-      if (params?.limit) queryParams.append('limit', params.limit.toString());
-      if (params?.offset) queryParams.append('offset', params.offset.toString());
-      const query = queryParams.toString();
-      return fetchAPI<any[]>(`/content/list${query ? `?${query}` : ''}`)
-        .catch((error) => {
-          console.warn('Content list API unavailable, using localStorage fallback:', error.message);
-          // Fallback to localStorage
-          const localContent = JSON.parse(localStorage.getItem('user-content') || '[]');
-          let filteredContent = localContent;
-          
-          if (params?.subject) {
-            filteredContent = filteredContent.filter((c: any) => c.subject === params.subject);
-          }
-          if (params?.content_type) {
-            filteredContent = filteredContent.filter((c: any) => c.content_type === params.content_type);
-          }
-          if (params?.processing_status) {
-            filteredContent = filteredContent.filter((c: any) => c.processing_status === params.processing_status);
-          }
-          
-          const limit = params?.limit || 100;
-          const offset = params?.offset || 0;
-          
-          return filteredContent.slice(offset, offset + limit);
-        });
-    },
     updateContent: (params: {
       content_id: string;
       title?: string;
@@ -1767,32 +1753,72 @@ export const api = {
         messages.push(userMessage);
         
         // Use RAG pipeline to get AI response
-        const ragResponse = await api.rag.query({
-          query: data.content,
-          subject: data.subject,
-          top_k: 5,
-          confidence_threshold: 0.3
-        });
+        let aiResponseContent = '';
+        let ragSources: any[] = [];
+        let ragConfidence = 0.8;
+        let ragUsed = false;
+        
+        try {
+          const ragResponse = await api.rag.query({
+            query: data.content,
+            subject: data.subject,
+            top_k: 5,
+            confidence_threshold: 0.3
+          });
+          
+          aiResponseContent = ragResponse.answer || ragResponse.generated_text || '';
+          ragSources = ragResponse.sources || [];
+          ragConfidence = ragResponse.confidence || 0.8;
+          ragUsed = true;
+        } catch (ragError) {
+          console.warn('RAG query failed, falling back to direct Gemini API');
+        }
+        
+        // If RAG failed or returned empty response, use Gemini API directly
+        if (!aiResponseContent || aiResponseContent.trim().length === 0) {
+          try {
+            const { generateText } = await import('@/utils/geminiApi');
+            
+            const contextualPrompt = `You are an AI tutor helping a student with their studies. 
+            Subject: ${data.subject || 'General'}
+            Student question: ${data.content}
+            
+            Please provide a helpful, educational response that:
+            - Explains concepts clearly and simply
+            - Provides step-by-step guidance when appropriate
+            - Encourages learning and understanding
+            - Is appropriate for the subject level
+            
+            Keep your response concise but informative.`;
+            
+            aiResponseContent = await generateText(contextualPrompt);
+            ragUsed = false;
+          } catch (geminiError) {
+            console.error('Gemini API also failed:', geminiError);
+            aiResponseContent = "I'm having trouble generating a response right now. This might be due to a temporary service issue. Please try rephrasing your question or try again in a moment.";
+            ragUsed = false;
+          }
+        }
         
         // Create AI response message
         const aiMessage = {
           id: 'ai-msg-' + Date.now(),
           role: 'assistant' as const,
-          content: ragResponse.answer || ragResponse.generated_text || 'I apologize, but I cannot provide a response at the moment. Please try again.',
+          content: aiResponseContent,
           created_at: new Date().toISOString(),
           message_type: 'response',
           subject: data.subject,
           metadata: {
-            confidence: ragResponse.confidence,
-            sources_count: ragResponse.sources?.length || 0,
-            rag_used: true
+            confidence: ragConfidence,
+            sources_count: ragSources.length,
+            rag_used: ragUsed,
+            gemini_fallback: !ragUsed
           }
         };
         
-        // Add sources if available
-        if (ragResponse.sources && ragResponse.sources.length > 0) {
-          (aiMessage as any).sources = ragResponse.sources;
-          aiMessage.metadata.sources_count = ragResponse.sources.length;
+        // Add sources if available (only for RAG responses)
+        if (ragUsed && ragSources.length > 0) {
+          (aiMessage as any).sources = ragSources;
         }
         
         messages.push(aiMessage);
@@ -2907,6 +2933,127 @@ export const api = {
       const queryParams = new URLSearchParams({ teacher_id: teacherId });
       return fetchAPI<any>(`/notifications/teacher?${queryParams}`);
     }
+  },
+
+  // Virtual Labs API
+  virtualLabs: {
+    create: (labData: {
+      title: string;
+      description?: string;
+      subject: string;
+      class_grade: number;
+      topic?: string;
+      html_content: string;
+      css_content?: string;
+      js_content?: string;
+      thumbnail_url?: string;
+      difficulty_level?: 'beginner' | 'intermediate' | 'advanced';
+      estimated_duration?: number;
+      learning_objectives: string[];
+      prerequisites?: string[];
+      tags?: string[];
+    }) =>
+      fetchAPI<any>('/virtual-labs', {
+        method: 'POST',
+        body: JSON.stringify(labData),
+      }),
+
+    list: (params?: {
+      subject?: string;
+      class_grade?: number;
+      difficulty_level?: string;
+      is_active?: boolean;
+      limit?: number;
+      offset?: number;
+    }) => {
+      const queryParams = new URLSearchParams();
+      if (params?.subject) queryParams.append('subject', params.subject);
+      if (params?.class_grade) queryParams.append('class_grade', params.class_grade.toString());
+      if (params?.difficulty_level) queryParams.append('difficulty_level', params.difficulty_level);
+      if (params?.is_active !== undefined) queryParams.append('is_active', params.is_active.toString());
+      if (params?.limit) queryParams.append('limit', params.limit.toString());
+      if (params?.offset) queryParams.append('offset', params.offset.toString());
+
+      const query = queryParams.toString();
+      return fetchAPI<any>(`/virtual-labs${query ? `?${query}` : ''}`);
+    },
+
+    get: (labId: string) =>
+      fetchAPI<any>(`/virtual-labs/${labId}`),
+
+    update: (labId: string, updates: any) =>
+      fetchAPI<any>(`/virtual-labs/${labId}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates),
+      }),
+
+    delete: (labId: string) =>
+      fetchAPI<any>(`/virtual-labs/${labId}`, {
+        method: 'DELETE',
+      }),
+
+    startSession: (data: {
+      user_id: string;
+      lab_id: string;
+      session_name?: string;
+    }) =>
+      fetchAPI<any>('/virtual-labs/sessions', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+
+    getSessions: (userId: string, params?: {
+      lab_id?: string;
+      completion_status?: string;
+      limit?: number;
+    }) => {
+      const queryParams = new URLSearchParams({ user_id: userId });
+      if (params?.lab_id) queryParams.append('lab_id', params.lab_id);
+      if (params?.completion_status) queryParams.append('completion_status', params.completion_status);
+      if (params?.limit) queryParams.append('limit', params.limit.toString());
+
+      return fetchAPI<any>(`/virtual-labs/sessions?${queryParams}`);
+    },
+
+    updateSession: (sessionId: string, updates: any) =>
+      fetchAPI<any>(`/virtual-labs/sessions/${sessionId}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates),
+      }),
+
+    recordInteraction: (data: {
+      session_id: string;
+      interaction_type: string;
+      interaction_data: any;
+      element_id?: string;
+      gesture_type?: string;
+      ai_response?: string;
+      performance_impact?: number;
+    }) =>
+      fetchAPI<any>('/virtual-labs/interactions', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+
+    getInteractions: (sessionId: string) =>
+      fetchAPI<any[]>(`/virtual-labs/sessions/${sessionId}/interactions`),
+
+    requestAIAssistance: (data: {
+      session_id: string;
+      user_query: string;
+      context_data?: any;
+      response_type?: 'explanation' | 'hint' | 'correction' | 'guidance';
+    }) =>
+      fetchAPI<any>('/virtual-labs/ai-assistance', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+
+    getAIAssistance: (sessionId: string) =>
+      fetchAPI<any[]>(`/virtual-labs/sessions/${sessionId}/ai-assistance`),
+
+    getPerformanceMetrics: (sessionId: string) =>
+      fetchAPI<any>(`/virtual-labs/sessions/${sessionId}/performance`)
   },
 
   // Quiz Management API

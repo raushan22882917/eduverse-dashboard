@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
+import { analyzeImage, testGeminiConnection } from '@/utils/geminiApi';
 import remarkGfm from 'remark-gfm';
 
 interface PDFLensToolProps {
@@ -201,23 +202,8 @@ const PDFLensTool: React.FC<PDFLensToolProps> = ({
   // Test Gemini API connection
   const testGeminiAPI = async () => {
     try {
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-      if (!apiKey) {
-        console.error('No Gemini API key found');
-        return false;
-      }
-      
-      console.log('Testing Gemini API connection...');
-      const { GoogleGenerativeAI } = await import('@google/generative-ai');
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-      
-      const result = await model.generateContent("Say 'Gemini API is working' if you can read this.");
-      const response = result.response;
-      const text = response.text();
-      
-      console.log('Gemini test response:', text);
-      return text.includes('working');
+      const result = await testGeminiConnection();
+      return result.success;
     } catch (error) {
       console.error('Gemini API test failed:', error);
       return false;
@@ -234,27 +220,17 @@ const PDFLensTool: React.FC<PDFLensToolProps> = ({
         throw new Error('Failed to capture area');
       }
 
-      const analysisPrompt = question 
-        ? `The user is asking about this specific screen area while studying ${subject}${contentTitle ? ` - "${contentTitle}"` : ''}: "${question}". Please analyze the content and provide a detailed educational answer.`
-        : `Analyze this specific screen area while the user is studying ${subject}${contentTitle ? ` - "${contentTitle}"` : ''}. Identify and explain any text, diagrams, formulas, or concepts that might be visible. Provide educational insights and explanations relevant to ${subject}. If the content appears to be from a PDF, document, or educational material, provide detailed analysis.`;
-
       let analysisText = '';
       let confidence = 0.85;
 
       // Use Gemini API directly for lens analysis
       console.log('Using Gemini API for lens analysis...');
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-      if (!apiKey) {
-        throw new Error('Gemini API key not configured. Please set VITE_GEMINI_API_KEY.');
-      }
+      
+      const analysisPrompt = question 
+        ? `The user is asking about this specific screen area while studying ${subject}${contentTitle ? ` - "${contentTitle}"` : ''}: "${question}". Please analyze the content and provide a detailed educational answer.`
+        : `Analyze this specific screen area while the user is studying ${subject}${contentTitle ? ` - "${contentTitle}"` : ''}. Identify and explain any text, diagrams, formulas, or concepts that might be visible. Provide educational insights and explanations relevant to ${subject}. If the content appears to be from a PDF, document, or educational material, provide detailed analysis.`;
 
-      try {
-        console.log('Attempting Gemini API call...');
-        const { GoogleGenerativeAI } = await import('@google/generative-ai');
-        const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
-        const geminiPrompt = `${analysisPrompt}
+      const geminiPrompt = `${analysisPrompt}
 
 **Context**: This is a screen capture from an educational interface where a student is studying ${subject}${contentTitle ? ` - ${contentTitle}` : ''}. 
 
@@ -270,25 +246,14 @@ const PDFLensTool: React.FC<PDFLensToolProps> = ({
 
 Please provide a detailed analysis of what you can see in this image.`;
 
+      try {
+        console.log('Sending request to Gemini...');
         const base64Data = imageData.split(',')[1];
-        console.log('Sending request to Gemini with image data length:', base64Data.length);
         
-        const result = await model.generateContent([
-          geminiPrompt,
-          {
-            inlineData: {
-              data: base64Data,
-              mimeType: "image/png",
-            },
-          },
-        ]);
-
-        console.log('Gemini API response received');
-        const response = result.response;
-        analysisText = response.text();
+        analysisText = await analyzeImage(base64Data, geminiPrompt);
         confidence = 0.85;
         
-        console.log('Gemini analysis text length:', analysisText?.length || 0);
+        console.log('Gemini analysis completed, text length:', analysisText?.length || 0);
         
         if (!analysisText || analysisText.trim().length === 0) {
           throw new Error('Empty response from Gemini API');

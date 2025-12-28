@@ -26,9 +26,11 @@ import {
   Save,
   Camera,
   Wifi,
-  WifiOff
+  WifiOff,
+  Key
 } from "lucide-react";
 import { LanguageSelector } from "@/components/LanguageSelector";
+import GeminiApiKeySetup from "@/components/GeminiApiKeySetup";
 
 const Settings = () => {
   const { user, loading } = useAuth();
@@ -431,6 +433,20 @@ const Settings = () => {
               <Button variant="outline" className="w-full justify-start text-destructive">
                 Delete Account
               </Button>
+            </CardContent>
+          </Card>
+
+          {/* API Configuration */}
+          <Card className="mb-6">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <Key className="h-5 w-5" />
+                <CardTitle>AI Features Configuration</CardTitle>
+              </div>
+              <CardDescription>Configure API keys for enhanced AI features</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <GeminiApiKeySetup />
             </CardContent>
           </Card>
 

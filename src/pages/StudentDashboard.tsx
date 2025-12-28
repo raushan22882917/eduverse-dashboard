@@ -1,4 +1,4 @@
-import { useEffect, useState, lazy, Suspense } from "react";
+import { useEffect, useState, lazy, Suspense, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import StudentSidebar from "@/components/StudentSidebar";
@@ -17,7 +17,6 @@ import {
   Target, 
   Brain,
   Calendar,
-  Zap,
   Trophy,
   Flame,
   BarChart3,
@@ -26,7 +25,6 @@ import {
   Play,
   Pause,
   RotateCcw,
-  Lightbulb,
   Rocket,
   Globe,
   Sun,
@@ -35,7 +33,9 @@ import {
   RefreshCw,
   Timer,
   FileText,
-  Settings
+  Settings,
+  FlaskConical,
+  Zap
 } from "lucide-react";
 import InlineLoader from "@/components/InlineLoader";
 import ApiHealthIndicator from "@/components/ApiHealthIndicator";
@@ -43,11 +43,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 
-// Lazy load heavy components
+// Lazy load heavy components with better loading states
 const ClassroomSession = lazy(() => import("@/components/ClassroomSession"));
 const MathText = lazy(() => import("@/components/MathRenderer").then(module => ({ default: module.MathText })));
+const MemoryInsights = lazy(() => import("@/components/MemoryInsights"));
+const QuizCreator = lazy(() => import("@/components/QuizCreator"));
 
-// Simple loading component instead of complex InteractiveLoader
+// Optimized loading component
 const SimpleLoader = () => (
   <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background to-primary/5">
     <div className="text-center space-y-4">
@@ -69,7 +71,7 @@ const StudentDashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   
-  // Simplified state management
+  // Consolidated state management
   const [studentData, setStudentData] = useState({
     grade: null as number | null,
     schoolName: "",
@@ -87,15 +89,81 @@ const StudentDashboard = () => {
   const [loadingData, setLoadingData] = useState(true);
   const [generatingPlan, setGeneratingPlan] = useState(false);
   
-  // Simplified timer state
+  // Optimized timer state with useCallback
   const [studyTimer, setStudyTimer] = useState({ minutes: 0, seconds: 0, isRunning: false });
   const [currentTime, setCurrentTime] = useState(new Date());
+
+  // Memoized navigation handlers
+  const navigateToPage = useCallback((path: string) => {
+    navigate(path);
+  }, [navigate]);
+
+  // Memoized data fetching
+  const fetchDashboardData = useCallback(async () => {
+    if (!user?.id) return;
+    
+    setLoadingData(true);
+    try {
+      // Parallel data fetching with better error handling
+      const [profileResult, microplanResult] = await Promise.allSettled([
+        supabase.from("student_profiles").select("grade, school_name").eq("user_id", user.id).single(),
+        api.microplan.getToday(user.id)
+      ]);
+
+      // Process profile data
+      if (profileResult.status === 'fulfilled' && profileResult.value.data) {
+        setStudentData(prev => ({
+          ...prev,
+          grade: profileResult.value.data.grade,
+          schoolName: profileResult.value.data.school_name || ""
+        }));
+      }
+
+      // Process microplan data
+      if (microplanResult.status === 'fulfilled') {
+        setTodayMicroplan(microplanResult.value);
+      }
+
+      // Fetch progress data in background (non-blocking)
+      api.progress.getSummary(user.id).then(progressData => {
+        if (progressData) {
+          setStudentData(prev => ({
+            ...prev,
+            lessonsCompleted: progressData.lessonsCompleted || 0,
+            timeSpent: progressData.timeSpent || "0h",
+            overallScore: progressData.overallScore || 0,
+            mathProgress: progressData.mathProgress || 0,
+            scienceProgress: progressData.scienceProgress || 0,
+            streak: progressData.streak || 0,
+            totalPoints: progressData.totalPoints || 0,
+            rank: progressData.rank || 0
+          }));
+        }
+      }).catch(console.error);
+
+    } catch (error) {
+      console.error("Error fetching dashboard data:", error);
+      toast({
+        title: "Error loading dashboard",
+        description: "Some data may not be up to date. Please refresh the page.",
+        variant: "destructive"
+      });
+    } finally {
+      setLoadingData(false);
+    }
+  }, [user?.id, toast]);
 
   useEffect(() => {
     if (!loading && !user) {
       navigate("/login");
     }
   }, [user, loading, navigate]);
+
+  useEffect(() => {
+    if (user?.id) {
+      fetchDashboardData();
+    }
+  }, [user?.id, fetchDashboardData]);
 
   // Simple clock update
   useEffect(() => {
@@ -269,9 +337,9 @@ const StudentDashboard = () => {
   // Quick actions data
   const quickActions = [
     { title: "Start AI Tutor", icon: Brain, color: "bg-purple-500", action: () => navigate("/dashboard/student/ai-tutor") },
+    { title: "Virtual Labs", icon: FlaskConical, color: "bg-teal-500", action: () => navigate("/dashboard/student/virtual-labs") },
     { title: "Take Quiz", icon: Target, color: "bg-blue-500", action: () => navigate("/dashboard/student/exams") },
-    { title: "Interactive Classroom", icon: Users, color: "bg-green-500", action: () => navigate("/dashboard/student/classroom") },
-    { title: "View Microplan", icon: Calendar, color: "bg-orange-500", action: () => navigate("/dashboard/student/microplan") }
+    { title: "Interactive Classroom", icon: Users, color: "bg-green-500", action: () => navigate("/dashboard/student/classroom") }
   ];
 
   return (
@@ -685,6 +753,7 @@ const StudentDashboard = () => {
                     <div className="space-y-2">
                       {[
                         { title: "All Subjects", icon: BookOpen, route: "/dashboard/student/subjects" },
+                        { title: "Virtual Labs", icon: FlaskConical, route: "/dashboard/student/virtual-labs" },
                         { title: "Exams & Tests", icon: FileText, route: "/dashboard/student/exams" },
                         { title: "Focus Timer", icon: Timer, route: "/dashboard/student/focus" },
                         { title: "Settings", icon: Settings, route: "/dashboard/student/settings" }

@@ -9,7 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { api } from '@/lib/api';
 import { supabase } from '@/integrations/supabase/client';
-import { Brain, CheckCircle, Clock, RotateCcw, Sparkles } from 'lucide-react';
+import { Brain, CheckCircle, RotateCcw, Sparkles } from 'lucide-react';
 
 interface MCQQuestion {
   id: string;
@@ -40,7 +40,6 @@ const ClassroomMCQ: React.FC<ClassroomMCQProps> = ({
   const [userAnswers, setUserAnswers] = useState<Record<number, number>>({});
   const [isCompleted, setIsCompleted] = useState(false);
   const [score, setScore] = useState(0);
-  const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [timeStarted, setTimeStarted] = useState<Date | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -113,6 +112,176 @@ const ClassroomMCQ: React.FC<ClassroomMCQProps> = ({
     }
   };
 
+  const createFallbackQuestions = (subject: string, chapter: string): MCQQuestion[] => {
+    console.log('Creating fallback questions for:', subject, chapter);
+    
+    return [
+      {
+        id: 'mcq_1',
+        question: `What is a key concept in ${chapter}?`,
+        options: [
+          'Understanding the fundamental principles',
+          'Memorizing all formulas',
+          'Skipping theoretical aspects',
+          'Focusing only on examples'
+        ],
+        correct_answer: 0,
+        explanation: 'Understanding fundamental principles is crucial for mastering any topic.'
+      },
+      {
+        id: 'mcq_2',
+        question: `Which approach is most effective when studying ${chapter}?`,
+        options: [
+          'Reading once quickly',
+          'Practice with examples and theory',
+          'Only watching videos',
+          'Memorizing without understanding'
+        ],
+        correct_answer: 1,
+        explanation: 'Combining practice with theoretical understanding leads to better learning outcomes.'
+      },
+      {
+        id: 'mcq_3',
+        question: `What should you focus on when learning ${subject}?`,
+        options: [
+          'Only the difficult topics',
+          'Building strong foundations first',
+          'Advanced topics only',
+          'Skipping basic concepts'
+        ],
+        correct_answer: 1,
+        explanation: 'Strong foundations are essential before moving to advanced concepts.'
+      },
+      {
+        id: 'mcq_4',
+        question: `How can you best prepare for ${subject} exams?`,
+        options: [
+          'Last-minute cramming',
+          'Regular practice and revision',
+          'Only reading textbooks',
+          'Avoiding difficult questions'
+        ],
+        correct_answer: 1,
+        explanation: 'Regular practice and systematic revision lead to better exam performance.'
+      },
+      {
+        id: 'mcq_5',
+        question: `What is important when solving ${subject} problems?`,
+        options: [
+          'Speed over accuracy',
+          'Understanding the method and accuracy',
+          'Guessing the answers',
+          'Avoiding step-by-step solutions'
+        ],
+        correct_answer: 1,
+        explanation: 'Understanding the method and maintaining accuracy are key to problem-solving success.'
+      }
+    ];
+  };
+
+  const parseGeneratedQuestions = (text: string): MCQQuestion[] => {
+    console.log('Parsing text:', text.substring(0, 500) + '...');
+    const questions: MCQQuestion[] = [];
+    
+    if (!text || text.trim().length === 0) {
+      console.log('Empty text provided for parsing');
+      return questions;
+    }
+    
+    // Try multiple parsing strategies
+    let questionBlocks = text.split(/Q\d+[:.]/).filter(block => block.trim());
+    console.log('Strategy 1 - Question blocks found:', questionBlocks.length);
+    
+    // Strategy 2: If no Q markers, try splitting by numbers (1., 2., etc.)
+    if (questionBlocks.length <= 1) {
+      questionBlocks = text.split(/\d+\./).filter(block => block.trim());
+      console.log('Strategy 2 - Number blocks found:', questionBlocks.length);
+    }
+    
+    // Strategy 3: If still no luck, try splitting by "Question" keyword
+    if (questionBlocks.length <= 1) {
+      questionBlocks = text.split(/Question\s*\d+/i).filter(block => block.trim());
+      console.log('Strategy 3 - Question keyword blocks found:', questionBlocks.length);
+    }
+    
+    questionBlocks.forEach((block, index) => {
+      console.log(`Processing block ${index + 1}:`, block.substring(0, 200) + '...');
+      
+      const lines = block.trim().split('\n').filter(line => line.trim());
+      if (lines.length < 5) {
+        console.log(`Block ${index + 1} skipped - insufficient lines (${lines.length})`);
+        return;
+      }
+      
+      let questionText = '';
+      const options: string[] = [];
+      let correctAnswer = 0;
+      let explanation = '';
+      
+      // Find question text (first non-option line)
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.match(/^[A-Da-d][\)\.]/) && 
+            !trimmed.toLowerCase().startsWith('correct:') && 
+            !trimmed.toLowerCase().startsWith('answer:') && 
+            !trimmed.toLowerCase().startsWith('explanation:') &&
+            trimmed.length > 10) {
+          questionText = trimmed;
+          break;
+        }
+      }
+      
+      // Parse all lines for options, correct answer, and explanation
+      lines.forEach(line => {
+        const trimmed = line.trim();
+        
+        // Match options with various formats: A), A., (A), a), etc.
+        const optionMatch = trimmed.match(/^[A-Da-d][\)\.]?\s*(.+)$/);
+        if (optionMatch && options.length < 4) {
+          const optionText = optionMatch[1].trim();
+          if (optionText.length > 0) {
+            options.push(optionText);
+          }
+        } else if (trimmed.toLowerCase().startsWith('correct:') || trimmed.toLowerCase().startsWith('answer:')) {
+          const correctPart = trimmed.split(':')[1]?.trim().toUpperCase();
+          if (correctPart) {
+            if (correctPart.match(/^[A-D]$/)) {
+              correctAnswer = correctPart.charCodeAt(0) - 65;
+            } else if (correctPart.match(/^[1-4]$/)) {
+              correctAnswer = parseInt(correctPart) - 1;
+            }
+          }
+        } else if (trimmed.toLowerCase().startsWith('explanation:')) {
+          explanation = trimmed.substring(12).trim();
+        }
+      });
+      
+      // Only add question if we have valid question text and at least 2 options
+      if (questionText && options.length >= 2) {
+        // Pad options to 4 if we have fewer
+        while (options.length < 4) {
+          options.push(`Option ${String.fromCharCode(65 + options.length)}`);
+        }
+        
+        const question: MCQQuestion = {
+          id: `mcq_${questions.length + 1}`,
+          question: questionText,
+          options: options.slice(0, 4),
+          correct_answer: Math.max(0, Math.min(3, correctAnswer)),
+          explanation: explanation || `Correct answer is option ${String.fromCharCode(65 + correctAnswer)}.`
+        };
+        
+        questions.push(question);
+        console.log(`Successfully parsed question ${questions.length}:`, question.question);
+      } else {
+        console.log(`Block ${index + 1} skipped - invalid format. Question: "${questionText}", Options: ${options.length}`);
+      }
+    });
+    
+    console.log(`Total questions parsed: ${questions.length}`);
+    return questions.slice(0, 5);
+  };
+
   const generateMCQQuestions = async () => {
     if (!user) {
       toast({
@@ -127,7 +296,6 @@ const ClassroomMCQ: React.FC<ClassroomMCQProps> = ({
     setGenerating(true);
     
     try {
-      // Create prompt for AI to generate MCQ questions
       const prompt = `Generate exactly 5 multiple choice questions based on this educational content:
 
 Subject: ${subject}
@@ -136,37 +304,79 @@ ${contentTitle ? `Topic: ${contentTitle}` : ''}
 
 ${contentText ? `Content: ${contentText.substring(0, 1500)}` : ''}
 
-Format each question as:
-Q1: [Question text]
-A) [Option A]
-B) [Option B] 
-C) [Option C]
-D) [Option D]
+IMPORTANT: Follow this EXACT format for each question:
+
+Q1: [Question text here]
+A) [First option]
+B) [Second option]
+C) [Third option]
+D) [Fourth option]
 Correct: A
-Explanation: [Brief explanation]
+Explanation: [Brief explanation why this is correct]
 
-Make questions challenging but fair for students. Focus on key concepts and understanding.`;
+Q2: [Next question text here]
+A) [First option]
+B) [Second option]
+C) [Third option]
+D) [Fourth option]
+Correct: B
+Explanation: [Brief explanation why this is correct]
 
-      console.log('Calling RAG API...');
-      const response = await api.rag.query({
-        query: prompt,
-        subject: subject as any,
-        top_k: 3,
-      });
+Continue this pattern for all 5 questions. Make questions challenging but fair for students. Focus on key concepts and understanding. Ensure each question has exactly 4 options labeled A, B, C, D.`;
 
-      console.log('RAG API response:', response);
-      const generatedText = response.generated_text || response.answer || '';
-      console.log('Generated text:', generatedText);
-      
-      const parsedQuestions = parseGeneratedQuestions(generatedText);
-      console.log('Parsed questions:', parsedQuestions);
+      let generatedText = '';
+      let parsedQuestions: MCQQuestion[] = [];
 
-      if (parsedQuestions.length === 0) {
-        throw new Error('Failed to generate valid questions');
+      // Try RAG API first
+      try {
+        console.log('Calling RAG API...');
+        const response = await api.rag.query({
+          query: prompt,
+          subject: subject as any,
+          top_k: 3,
+        });
+
+        console.log('RAG API response:', response);
+        generatedText = response.generated_text || response.answer || '';
+        console.log('Generated text from RAG:', generatedText);
+        
+        if (generatedText) {
+          parsedQuestions = parseGeneratedQuestions(generatedText);
+          console.log('Parsed questions from RAG:', parsedQuestions);
+        }
+      } catch (ragError) {
+        console.warn('RAG API failed, trying Gemini API directly:', ragError);
       }
 
-      // Try to save to database, fallback to local storage if table doesn't exist
-      console.log('Saving to database...');
+      // If RAG failed or didn't produce valid questions, try Gemini API directly
+      if (parsedQuestions.length === 0) {
+        try {
+          console.log('Trying Gemini API directly...');
+          const { generateText } = await import('@/utils/geminiApi');
+          
+          generatedText = await generateText(prompt);
+          console.log('Generated text from Gemini:', generatedText);
+          
+          if (generatedText) {
+            parsedQuestions = parseGeneratedQuestions(generatedText);
+            console.log('Parsed questions from Gemini:', parsedQuestions);
+          }
+        } catch (geminiError) {
+          console.error('Gemini API also failed:', geminiError);
+        }
+      }
+
+      // If still no questions, create a simple fallback
+      if (parsedQuestions.length === 0) {
+        console.log('Creating fallback questions...');
+        parsedQuestions = createFallbackQuestions(subject, chapter);
+      }
+
+      if (parsedQuestions.length === 0) {
+        throw new Error('Unable to generate questions. Please check your internet connection and try again.');
+      }
+
+      // Save to database or localStorage
       let sessionId = `local_${Date.now()}`;
       
       try {
@@ -189,7 +399,6 @@ Make questions challenging but fair for students. Focus on key concepts and unde
 
         if (error) {
           console.warn('Database save failed, using local storage:', error);
-          // Fallback to localStorage
           const localSession = {
             id: sessionId,
             user_id: user.id,
@@ -207,7 +416,6 @@ Make questions challenging but fair for students. Focus on key concepts and unde
         }
       } catch (dbError) {
         console.warn('Database connection failed, using local storage:', dbError);
-        // Fallback to localStorage
         const localSession = {
           id: sessionId,
           user_id: user.id,
@@ -246,65 +454,6 @@ Make questions challenging but fair for students. Focus on key concepts and unde
     }
   };
 
-  const parseGeneratedQuestions = (text: string): MCQQuestion[] => {
-    const questions: MCQQuestion[] = [];
-    
-    // Split by question markers
-    const questionBlocks = text.split(/Q\d+[:.]/).filter(block => block.trim());
-    
-    questionBlocks.forEach((block, index) => {
-      const lines = block.trim().split('\n').filter(line => line.trim());
-      if (lines.length < 5) return; // Need at least question + 4 options
-      
-      const questionText = lines[0].trim();
-      const options: string[] = [];
-      let correctAnswer = 0;
-      let explanation = '';
-      
-      lines.forEach(line => {
-        const trimmed = line.trim();
-        if (trimmed.match(/^[A-D]\)/)) {
-          options.push(trimmed.substring(2).trim());
-        } else if (trimmed.toLowerCase().startsWith('correct:')) {
-          const correctLetter = trimmed.split(':')[1]?.trim().toUpperCase();
-          correctAnswer = correctLetter ? correctLetter.charCodeAt(0) - 65 : 0;
-        } else if (trimmed.toLowerCase().startsWith('explanation:')) {
-          explanation = trimmed.substring(12).trim();
-        }
-      });
-      
-      if (questionText && options.length >= 4) {
-        questions.push({
-          id: `mcq_${index + 1}`,
-          question: questionText,
-          options: options.slice(0, 4),
-          correct_answer: Math.max(0, Math.min(3, correctAnswer)),
-          explanation: explanation
-        });
-      }
-    });
-    
-    // Fallback: create simple questions if parsing fails
-    if (questions.length === 0) {
-      for (let i = 1; i <= 5; i++) {
-        questions.push({
-          id: `mcq_${i}`,
-          question: `Question ${i}: What is an important concept in ${chapter}?`,
-          options: [
-            'Option A - First concept',
-            'Option B - Second concept', 
-            'Option C - Third concept',
-            'Option D - Fourth concept'
-          ],
-          correct_answer: 0,
-          explanation: 'This is a sample question. Please regenerate for actual content.'
-        });
-      }
-    }
-    
-    return questions.slice(0, 5); // Ensure exactly 5 questions
-  };
-
   const handleAnswerSelect = (questionIndex: number, answerIndex: number) => {
     if (isCompleted) return;
     
@@ -325,7 +474,6 @@ Make questions challenging but fair for students. Focus on key concepts and unde
     const timeTaken = timeStarted ? Math.floor((new Date().getTime() - timeStarted.getTime()) / 1000) : 0;
 
     try {
-      // Try to update database first
       const { error } = await (supabase as any)
         .from('classroom_mcq')
         .update({
@@ -340,7 +488,6 @@ Make questions challenging but fair for students. Focus on key concepts and unde
 
       if (error) {
         console.warn('Database update failed, updating localStorage:', error);
-        // Fallback to localStorage
         const localKey = `mcq_session_${sessionId}`;
         const existingSession = JSON.parse(localStorage.getItem(localKey) || '{}');
         const updatedSession = {
@@ -365,7 +512,6 @@ Make questions challenging but fair for students. Focus on key concepts and unde
 
     } catch (error: any) {
       console.error('Error submitting answers:', error);
-      // Still update local state even if save fails
       setScore(finalScore);
       setIsCompleted(true);
       

@@ -19,7 +19,8 @@ import {
   Sparkles,
   FileDown,
   FileQuestion,
-  Hand
+  Hand,
+  FlaskConical
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -160,6 +161,14 @@ const StudentSidebar = () => {
           >
             <Hand className="h-5 w-5" />
             <span className="text-sm font-medium">Draw In Air</span>
+          </NavLink>
+          <NavLink
+            to="/dashboard/student/virtual-labs"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-accent transition-colors"
+            activeClassName="bg-primary/20 text-primary hover:bg-primary/30"
+          >
+            <FlaskConical className="h-5 w-5" />
+            <span className="text-sm font-medium">Virtual Labs</span>
           </NavLink>
           <NavLink
             to="/dashboard/student/upload-content"

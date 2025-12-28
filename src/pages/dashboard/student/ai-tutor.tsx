@@ -1118,6 +1118,79 @@ Would you like to rephrase your question or ask about a specific aspect? I'm her
     setShowDeleteDialog(true);
   };
 
+  // Format relative time for history display
+  const formatRelativeTime = (date: Date) => {
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffMins < 1) {
+      return 'Just now';
+    } else if (diffMins < 60) {
+      return `${diffMins}m ago`;
+    } else if (diffHours < 24) {
+      return `${diffHours}h ago`;
+    } else if (diffDays < 7) {
+      return `${diffDays}d ago`;
+    } else {
+      return date.toLocaleDateString();
+    }
+  };
+
+  // Start editing session name
+  const startEditing = (sessionId: string, currentName: string) => {
+    setEditingSessionId(sessionId);
+    setEditingSessionName(currentName);
+  };
+
+  // Export session history
+  const exportSessionHistory = async (session: Session) => {
+    try {
+      const sessionMessages = JSON.parse(localStorage.getItem(`ai-tutor-messages-${session.id}`) || '[]');
+      
+      const exportData = {
+        session: {
+          id: session.id,
+          name: session.session_name,
+          subject: session.subject,
+          created_at: session.created_at,
+          last_message_at: session.last_message_at
+        },
+        messages: sessionMessages.map((msg: Message) => ({
+          role: msg.role,
+          content: msg.content,
+          timestamp: msg.created_at,
+          subject: msg.subject
+        })),
+        exported_at: new Date().toISOString()
+      };
+
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ai-tutor-session-${session.session_name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast({
+        title: "Session Exported",
+        description: `Successfully exported "${session.session_name}" conversation history.`,
+      });
+    } catch (error) {
+      console.error('Error exporting session:', error);
+      toast({
+        variant: "destructive",
+        title: "Export Failed",
+        description: "Failed to export session history. Please try again.",
+      });
+    }
+  };
+
   return (
     <div className="flex h-screen bg-background overflow-hidden">
       {/* Enhanced Sidebar */}
@@ -1171,12 +1244,15 @@ Would you like to rephrase your question or ask about a specific aspect? I'm her
 
         {/* Enhanced Sidebar Content */}
         <Tabs defaultValue="sessions" className="flex-1 flex flex-col">
-          <TabsList className="grid w-full grid-cols-3 mx-4 bg-muted/30">
+          <TabsList className="grid w-full grid-cols-4 mx-4 bg-muted/30">
             <TabsTrigger value="sessions" className="text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm">
               💬 Chats
             </TabsTrigger>
+            <TabsTrigger value="history" className="text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm">
+              �  History
+            </TabsTrigger>
             <TabsTrigger value="insights" className="text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm">
-              📊 Insights
+              � Insilghts
             </TabsTrigger>
             <TabsTrigger value="tools" className="text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm">
               🛠️ Tools
@@ -1332,6 +1408,151 @@ Would you like to rephrase your question or ask about a specific aspect? I'm her
                     <MessageSquare className="h-12 w-12 mx-auto mb-3 opacity-30" />
                     <p className="text-sm font-medium mb-1">No conversations yet</p>
                     <p className="text-xs">Start a new chat to begin learning</p>
+                  </div>
+                )}
+              </div>
+            </ScrollArea>
+          </TabsContent>
+          
+          <TabsContent value="history" className="flex-1 mt-2 overflow-hidden">
+            <ScrollArea className="h-full">
+              <div className="p-4 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-foreground">Conversation History</h3>
+                  <Badge variant="outline" className="text-xs">
+                    {sessions.length} session{sessions.length !== 1 ? 's' : ''}
+                  </Badge>
+                </div>
+                
+                {sessions.length === 0 ? (
+                  <div className="text-center py-8">
+                    <MessageSquare className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+                    <p className="text-sm text-muted-foreground">No conversation history yet</p>
+                    <p className="text-xs text-muted-foreground mt-1">Start a new chat to begin learning!</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {sessions
+                      .sort((a, b) => new Date(b.last_message_at || b.created_at).getTime() - new Date(a.last_message_at || a.created_at).getTime())
+                      .map((session) => {
+                        const sessionMessages = JSON.parse(localStorage.getItem(`ai-tutor-messages-${session.id}`) || '[]');
+                        const messageCount = sessionMessages.length;
+                        const lastMessage = sessionMessages[sessionMessages.length - 1];
+                        const lastMessageTime = lastMessage ? new Date(lastMessage.created_at) : new Date(session.created_at);
+                        
+                        return (
+                          <Card 
+                            key={session.id} 
+                            className={cn(
+                              "cursor-pointer transition-all duration-200 hover:shadow-md border",
+                              currentSession?.id === session.id 
+                                ? "border-primary/50 bg-primary/5" 
+                                : "border-border hover:border-primary/30"
+                            )}
+                            onClick={() => setCurrentSession(session)}
+                          >
+                            <CardContent className="p-4">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <MessageSquare className="h-4 w-4 text-primary flex-shrink-0" />
+                                    <h4 className="font-medium text-sm truncate">
+                                      {formatSessionNameForDisplay(session.session_name)}
+                                    </h4>
+                                  </div>
+                                  
+                                  {session.subject && (
+                                    <Badge variant="secondary" className="text-xs mb-2">
+                                      {session.subject}
+                                    </Badge>
+                                  )}
+                                  
+                                  {lastMessage && (
+                                    <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
+                                      {lastMessage.role === 'student' ? '👤 You: ' : '🤖 AI: '}
+                                      {lastMessage.content.substring(0, 100)}
+                                      {lastMessage.content.length > 100 ? '...' : ''}
+                                    </p>
+                                  )}
+                                  
+                                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                                    <div className="flex items-center gap-1">
+                                      <Clock className="h-3 w-3" />
+                                      {formatRelativeTime(lastMessageTime)}
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <MessageSquare className="h-3 w-3" />
+                                      {messageCount} message{messageCount !== 1 ? 's' : ''}
+                                    </div>
+                                  </div>
+                                </div>
+                                
+                                <div className="flex flex-col items-end gap-2">
+                                  {session.is_active && (
+                                    <Badge variant="default" className="text-xs">
+                                      Active
+                                    </Badge>
+                                  )}
+                                  
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <MoreVertical className="h-4 w-4" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      <DropdownMenuItem
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setCurrentSession(session);
+                                        }}
+                                      >
+                                        <MessageSquare className="h-4 w-4 mr-2" />
+                                        Open Chat
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          startEditing(session.id, session.session_name);
+                                        }}
+                                      >
+                                        <Edit2 className="h-4 w-4 mr-2" />
+                                        Rename
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          exportSessionHistory(session);
+                                        }}
+                                      >
+                                        <Download className="h-4 w-4 mr-2" />
+                                        Export
+                                      </DropdownMenuItem>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setDeletingSessionId(session.id);
+                                          setShowDeleteDialog(true);
+                                        }}
+                                        className="text-destructive focus:text-destructive"
+                                      >
+                                        <Trash2 className="h-4 w-4 mr-2" />
+                                        Delete
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
                   </div>
                 )}
               </div>

@@ -141,6 +141,12 @@ const Home = () => {
             </div>
             <span className="text-2xl font-bold text-foreground">EduVerse</span>
           </div>
+          <div className="hidden md:flex items-center gap-6">
+            <Link to="/" className="text-primary font-medium">Home</Link>
+            <Link to="/about" className="text-muted-foreground hover:text-primary transition-colors">About</Link>
+            <Link to="/contact" className="text-muted-foreground hover:text-primary transition-colors">Contact</Link>
+            <Link to="/terms" className="text-muted-foreground hover:text-primary transition-colors">Terms</Link>
+          </div>
           <div className="flex gap-3">
             <Button variant="outline" asChild className="hover:bg-primary/5">
               <Link to="/login">Login</Link>

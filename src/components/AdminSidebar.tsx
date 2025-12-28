@@ -10,7 +10,8 @@ import {
   LogOut,
   FileText,
   Building2,
-  Bell
+  Bell,
+  FlaskConical
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -101,6 +102,14 @@ const AdminSidebar = () => {
           >
             <FileText className="h-4 w-4" />
             <span className="text-sm font-medium">Manage All Content</span>
+          </NavLink>
+          <NavLink
+            to="/dashboard/admin/virtual-labs"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-accent transition-colors"
+            activeClassName="bg-primary/20 text-primary hover:bg-primary/30"
+          >
+            <FlaskConical className="h-5 w-5" />
+            <span className="text-sm font-medium">Virtual Labs</span>
           </NavLink>
           <NavLink
             to="/dashboard/admin/notifications/create"

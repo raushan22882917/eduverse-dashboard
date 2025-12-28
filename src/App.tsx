@@ -5,6 +5,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
 import Home from "./pages/Home";
+import About from "./pages/About";
+import Contact from "./pages/Contact";
+import Terms from "./pages/Terms";
+import Privacy from "./pages/Privacy";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import ProfileSetup from "./pages/ProfileSetup";
@@ -59,6 +63,12 @@ import QuizCreatorPage from "./pages/QuizCreatorPage";
 import QuizPreviewPage from "./pages/QuizPreviewPage";
 import QuizSharePage from "./pages/QuizSharePage";
 import GlobalScreenLens from "./components/GlobalScreenLens";
+import StudentVirtualLabs from "./pages/StudentVirtualLabs";
+import DatabaseVirtualLabsPage from "./pages/DatabaseVirtualLabsPage";
+import AdminVirtualLabs from "./pages/AdminVirtualLabs";
+import VirtualLabTutorialPage from "./pages/VirtualLabTutorialPage";
+import GeminiTestPage from "./pages/GeminiTestPage";
+import AIVirtualLab from "./pages/AIVirtualLab";
 
 import SchoolManagement from "./pages/SchoolManagement";
 import NotFound from "./pages/NotFound";
@@ -81,6 +91,10 @@ const App = () => (
             <Sonner />
             <Routes>
             <Route path="/" element={<Home />} />
+            <Route path="/about" element={<About />} />
+            <Route path="/contact" element={<Contact />} />
+            <Route path="/terms" element={<Terms />} />
+            <Route path="/privacy" element={<Privacy />} />
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
             <Route path="/profile-setup" element={<ProfileSetup />} />
@@ -100,6 +114,11 @@ const App = () => (
             <Route path="/dashboard/student/exam/start/:examSetId" element={<ExamTest />} />
             <Route path="/dashboard/student/practice/pyq" element={<PYQPractice />} />
             <Route path="/dashboard/student/draw-in-air" element={<DrawInAir />} />
+            <Route path="/dashboard/student/virtual-labs" element={<StudentVirtualLabs />} />
+            <Route path="/dashboard/student/virtual-labs/database" element={<DatabaseVirtualLabsPage />} />
+            <Route path="/dashboard/student/virtual-labs/tutorial" element={<VirtualLabTutorialPage />} />
+            <Route path="/dashboard/student/virtual-labs/gemini-test" element={<GeminiTestPage />} />
+            <Route path="/dashboard/student/virtual-labs/ai" element={<AIVirtualLab />} />
             <Route path="/draw-in-air" element={<DrawInAir />} />
             <Route path="/dashboard/student/practice/pyq" element={<PYQPractice />} />
 
@@ -139,6 +158,7 @@ const App = () => (
             <Route path="/dashboard/admin/analytics" element={<Analytics />} />
             <Route path="/dashboard/admin/content" element={<ContentManagement />} />
             <Route path="/dashboard/admin/content/manage" element={<ManageContent />} />
+            <Route path="/dashboard/admin/virtual-labs" element={<AdminVirtualLabs />} />
             <Route path="/dashboard/admin/notifications" element={<Notifications />} />
             <Route path="/dashboard/admin/notifications/create" element={<CreateNotification />} />
             <Route path="*" element={<NotFound />} />
