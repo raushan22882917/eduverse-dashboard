@@ -39,6 +39,7 @@ import {
 } from "lucide-react";
 import InlineLoader from "@/components/InlineLoader";
 import ApiHealthIndicator from "@/components/ApiHealthIndicator";
+import DemoModeBanner from "@/components/DemoModeBanner";
 import { supabase } from "@/integrations/supabase/client";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
@@ -67,26 +68,26 @@ const SimpleLoader = () => (
 );
 
 const StudentDashboard = () => {
-  const { user, loading } = useAuth();
+  const { user, loading, isDemoUser, loginAsDemo } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   
   // Consolidated state management
   const [studentData, setStudentData] = useState({
-    grade: null as number | null,
-    schoolName: "",
-    lessonsCompleted: 0,
-    timeSpent: "0h",
-    overallScore: 0,
-    mathProgress: 0,
-    scienceProgress: 0,
-    streak: 0,
-    totalPoints: 0,
-    rank: 0
+    grade: 10 as number | null,
+    schoolName: "EduVerse Model High School",
+    lessonsCompleted: 24,
+    timeSpent: "18h 45m",
+    overallScore: 92,
+    mathProgress: 88,
+    scienceProgress: 95,
+    streak: 12,
+    totalPoints: 3420,
+    rank: 4
   });
   
   const [todayMicroplan, setTodayMicroplan] = useState<any>(null);
-  const [loadingData, setLoadingData] = useState(true);
+  const [loadingData, setLoadingData] = useState(() => !localStorage.getItem('eduverse_demo_role'));
   const [generatingPlan, setGeneratingPlan] = useState(false);
   
   // Optimized timer state with useCallback
@@ -101,6 +102,38 @@ const StudentDashboard = () => {
   // Memoized data fetching
   const fetchDashboardData = useCallback(async () => {
     if (!user?.id) return;
+
+    if (isDemoUser || user.id.startsWith('demo-')) {
+      setStudentData({
+        grade: 10,
+        schoolName: "EduVerse Model High School (Demo)",
+        lessonsCompleted: 24,
+        timeSpent: "18h 45m",
+        overallScore: 92,
+        mathProgress: 88,
+        scienceProgress: 95,
+        streak: 12,
+        totalPoints: 3420,
+        rank: 4
+      });
+      setTodayMicroplan({
+        id: "demo-microplan-1",
+        status: "in_progress",
+        concept_summary: {
+          topic_name: "Quadratic Equations & Projectile Motion",
+          subject: "Math & Physics",
+          duration: "45 mins",
+          difficulty: "Intermediate",
+          key_points: [
+            "Roots of quadratic equations via standard discriminant formula",
+            "Parabolic path of projectiles under constant gravity",
+            "Visualizing maximum height and flight time"
+          ]
+        }
+      });
+      setLoadingData(false);
+      return;
+    }
     
     setLoadingData(true);
     try {
@@ -151,13 +184,23 @@ const StudentDashboard = () => {
     } finally {
       setLoadingData(false);
     }
-  }, [user?.id, toast]);
+  }, [user?.id, isDemoUser, toast]);
 
   useEffect(() => {
     if (!loading && !user) {
+      const storedDemo = localStorage.getItem('eduverse_demo_role');
+      if (storedDemo) {
+        loginAsDemo(storedDemo as any);
+        return;
+      }
+      const searchParams = new URLSearchParams(window.location.search);
+      if (searchParams.get('demo') === 'true') {
+        loginAsDemo('student');
+        return;
+      }
       navigate("/login");
     }
-  }, [user, loading, navigate]);
+  }, [user, loading, navigate, loginAsDemo]);
 
   useEffect(() => {
     if (user?.id) {
@@ -192,6 +235,38 @@ const StudentDashboard = () => {
   useEffect(() => {
     const fetchEssentialData = async () => {
       if (!user) return;
+
+      if (isDemoUser || user.id.startsWith('demo-')) {
+        setStudentData({
+          grade: 10,
+          schoolName: "EduVerse Model High School (Demo)",
+          lessonsCompleted: 24,
+          timeSpent: "18h 45m",
+          overallScore: 92,
+          mathProgress: 88,
+          scienceProgress: 95,
+          streak: 12,
+          totalPoints: 3420,
+          rank: 4
+        });
+        setTodayMicroplan({
+          id: "demo-microplan-1",
+          status: "in_progress",
+          concept_summary: {
+            topic_name: "Quadratic Equations & Projectile Motion",
+            subject: "Math & Physics",
+            duration: "45 mins",
+            difficulty: "Intermediate",
+            key_points: [
+              "Roots of quadratic equations via standard discriminant formula",
+              "Parabolic path of projectiles under constant gravity",
+              "Visualizing maximum height and flight time"
+            ]
+          }
+        });
+        setLoadingData(false);
+        return;
+      }
 
       try {
         setLoadingData(true);
@@ -288,6 +363,34 @@ const StudentDashboard = () => {
 
   const handleGenerateMicroplan = async () => {
     if (!user) return;
+
+    if (isDemoUser || user.id.startsWith('demo-')) {
+      setGeneratingPlan(true);
+      setTimeout(() => {
+        setTodayMicroplan({
+          id: `demo-plan-${Date.now()}`,
+          status: "in_progress",
+          concept_summary: {
+            topic_name: "Electromagnetic Induction & Faraday's Law",
+            subject: "Physics",
+            duration: "50 mins",
+            difficulty: "Advanced",
+            key_points: [
+              "Magnetic flux linkage through conductive loops",
+              "Lenz's Law and conservation of energy",
+              "AC Generator practical demonstration"
+            ]
+          }
+        });
+        setGeneratingPlan(false);
+        toast({
+          title: "New AI Microplan Generated!",
+          description: "Electromagnetic Induction plan loaded with interactive exercises.",
+        });
+      }, 700);
+      return;
+    }
+
     try {
       setGeneratingPlan(true);
       const microplan = await api.microplan.generate({ user_id: user.id });
@@ -343,10 +446,12 @@ const StudentDashboard = () => {
   ];
 
   return (
-    <div className="flex h-screen w-full overflow-hidden">
-      <StudentSidebar />
+    <div className="flex h-screen w-full overflow-hidden flex-col">
+      <DemoModeBanner />
+      <div className="flex flex-1 w-full overflow-hidden">
+        <StudentSidebar />
 
-      <main className="flex-1 overflow-y-auto bg-gradient-to-br from-background via-background to-primary/5">
+        <main className="flex-1 overflow-y-auto bg-gradient-to-br from-background via-background to-primary/5">
         <div className="p-4 md:p-8">
           <div className="max-w-7xl mx-auto">
             {/* Simplified Header */}
@@ -780,6 +885,7 @@ const StudentDashboard = () => {
           </div>
         </div>
       </main>
+      </div>
     </div>
   );
 };

@@ -11,6 +11,7 @@ import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
+import DemoPage from "./pages/DemoPage";
 import ProfileSetup from "./pages/ProfileSetup";
 import StudentDashboard from "./pages/StudentDashboard";
 import AllSubjects from "./pages/AllSubjects";
@@ -97,6 +98,8 @@ const App = () => (
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
+            <Route path="/demo" element={<DemoPage />} />
+            <Route path="/demo/:role" element={<DemoPage />} />
             <Route path="/profile-setup" element={<ProfileSetup />} />
             <Route path="/dashboard/student" element={<StudentDashboard />} />
             <Route path="/dashboard/student/classroom" element={<Classroom />} />

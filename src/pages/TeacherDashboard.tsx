@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import TeacherSidebar from "@/components/TeacherSidebar";
+import DemoModeBanner from "@/components/DemoModeBanner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -21,23 +22,33 @@ import {
 } from "lucide-react";
 
 const TeacherDashboard = () => {
-  const { user, loading } = useAuth();
+  const { user, loading, isDemoUser, loginAsDemo } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   
   const [dashboardData, setDashboardData] = useState({
-    total_students: 0,
-    active_students: 0,
-    pending_homework: 0,
-    recent_quizzes: 0
+    total_students: 48,
+    active_students: 42,
+    pending_homework: 7,
+    recent_quizzes: 12
   });
-  const [loadingData, setLoadingData] = useState(true);
+  const [loadingData, setLoadingData] = useState(() => !localStorage.getItem('eduverse_demo_role'));
 
   useEffect(() => {
     if (!loading && !user) {
+      const storedDemo = localStorage.getItem('eduverse_demo_role');
+      if (storedDemo) {
+        loginAsDemo(storedDemo as any);
+        return;
+      }
+      const searchParams = new URLSearchParams(window.location.search);
+      if (searchParams.get('demo') === 'true') {
+        loginAsDemo('teacher');
+        return;
+      }
       navigate("/login");
     }
-  }, [user, loading, navigate]);
+  }, [user, loading, navigate, loginAsDemo]);
 
   useEffect(() => {
     if (user) {
@@ -46,6 +57,17 @@ const TeacherDashboard = () => {
   }, [user]);
 
   const fetchDashboardData = async () => {
+    if (isDemoUser || user?.id?.startsWith('demo-')) {
+      setDashboardData({
+        total_students: 48,
+        active_students: 42,
+        pending_homework: 7,
+        recent_quizzes: 12
+      });
+      setLoadingData(false);
+      return;
+    }
+
     try {
       setLoadingData(true);
       const data = await api.teacher.getDashboard(user?.id || "");
@@ -156,10 +178,12 @@ const TeacherDashboard = () => {
   ];
 
   return (
-    <div className="flex h-screen w-full overflow-hidden">
-      <TeacherSidebar />
-      
-      <main className="flex-1 overflow-y-auto bg-background">
+    <div className="flex h-screen w-full overflow-hidden flex-col">
+      <DemoModeBanner />
+      <div className="flex flex-1 w-full overflow-hidden">
+        <TeacherSidebar />
+        
+        <main className="flex-1 overflow-y-auto bg-background">
         <div className="p-8">
         <div className="max-w-7xl mx-auto">
           {/* Page Heading */}
@@ -282,6 +306,7 @@ const TeacherDashboard = () => {
         </div>
         </div>
       </main>
+      </div>
     </div>
   );
 };

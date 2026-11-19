@@ -25,7 +25,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { supabase } from "@/integrations/supabase/client";
 
 const TeacherSidebar = () => {
-  const { user, signOut } = useAuth();
+  const { user, signOut, isDemoUser } = useAuth();
   const navigate = useNavigate();
   const [schoolName, setSchoolName] = useState<string | null>(null);
 
@@ -40,6 +40,11 @@ const TeacherSidebar = () => {
   useEffect(() => {
     const fetchTeacherProfile = async () => {
       if (!user) return;
+
+      if (isDemoUser || user.id.startsWith('demo-')) {
+        setSchoolName("EduVerse Demo Academy");
+        return;
+      }
 
       try {
         // First get the teacher profile with school_id

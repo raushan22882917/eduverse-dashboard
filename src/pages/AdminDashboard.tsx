@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import AdminSidebar from "@/components/AdminSidebar";
+import DemoModeBanner from "@/components/DemoModeBanner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { api } from "@/lib/api";
@@ -19,33 +20,60 @@ import {
 } from "lucide-react";
 
 const AdminDashboard = () => {
-  const { user, loading } = useAuth();
+  const { user, loading, isDemoUser, loginAsDemo } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [stats, setStats] = useState({
-    totalUsers: 0,
-    totalStudents: 0,
-    totalTeachers: 0,
-    totalAdmins: 0,
-    activeUsers: 0,
-    completedProfiles: 0,
-    totalLessons: 0,
-    recentSignups: 0,
-    averageMastery: 0,
-    completionRate: 0
+    totalUsers: 1420,
+    totalStudents: 1180,
+    totalTeachers: 195,
+    totalAdmins: 45,
+    activeUsers: 980,
+    completedProfiles: 1340,
+    totalLessons: 4200,
+    recentSignups: 72,
+    averageMastery: 88,
+    completionRate: 84
   });
-  const [loadingStats, setLoadingStats] = useState(true);
+  const [loadingStats, setLoadingStats] = useState(() => !localStorage.getItem('eduverse_demo_role'));
 
   useEffect(() => {
     if (!loading && !user) {
+      const storedDemo = localStorage.getItem('eduverse_demo_role');
+      if (storedDemo) {
+        loginAsDemo(storedDemo as any);
+        return;
+      }
+      const searchParams = new URLSearchParams(window.location.search);
+      if (searchParams.get('demo') === 'true') {
+        loginAsDemo('admin');
+        return;
+      }
       navigate("/login");
     }
-  }, [user, loading, navigate]);
+  }, [user, loading, navigate, loginAsDemo]);
 
   useEffect(() => {
     const fetchStats = async () => {
       if (!user) return;
       
+      if (isDemoUser || user.id.startsWith('demo-')) {
+        setStats({
+          totalUsers: 1420,
+          totalStudents: 1180,
+          totalTeachers: 195,
+          totalAdmins: 45,
+          activeUsers: 980,
+          completedProfiles: 1340,
+          totalLessons: 4200,
+          recentSignups: 72,
+          averageMastery: 88,
+          completionRate: 84
+        });
+        setLoadingStats(false);
+        return;
+      }
+
       setLoadingStats(true);
       try {
         // Fetch admin dashboard metrics from API
@@ -214,10 +242,12 @@ const AdminDashboard = () => {
   ];
 
   return (
-    <div className="flex h-screen w-full overflow-hidden">
-      <AdminSidebar />
-      
-      <main className="flex-1 overflow-y-auto bg-background">
+    <div className="flex h-screen w-full overflow-hidden flex-col">
+      <DemoModeBanner />
+      <div className="flex flex-1 w-full overflow-hidden">
+        <AdminSidebar />
+        
+        <main className="flex-1 overflow-y-auto bg-background">
         <div className="p-8">
         <div className="max-w-7xl mx-auto">
           {/* Page Heading */}
@@ -388,6 +418,7 @@ const AdminDashboard = () => {
         </div>
         </div>
       </main>
+      </div>
     </div>
   );
 };

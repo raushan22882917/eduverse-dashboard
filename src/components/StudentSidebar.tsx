@@ -27,7 +27,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { supabase } from "@/integrations/supabase/client";
 
 const StudentSidebar = () => {
-  const { user, signOut } = useAuth();
+  const { user, signOut, isDemoUser } = useAuth();
   const navigate = useNavigate();
   const [classGrade, setClassGrade] = useState<number | null>(null);
 
@@ -42,6 +42,11 @@ const StudentSidebar = () => {
   useEffect(() => {
     const fetchStudentProfile = async () => {
       if (!user) return;
+
+      if (isDemoUser || user.id.startsWith('demo-')) {
+        setClassGrade(10);
+        return;
+      }
 
       try {
         const { data: studentProfile, error } = await supabase

@@ -148,6 +148,12 @@ const Home = () => {
             <Link to="/terms" className="text-muted-foreground hover:text-primary transition-colors">Terms</Link>
           </div>
           <div className="flex gap-3">
+            <Button variant="outline" asChild className="hover:bg-primary/10 border-primary/40 text-primary font-medium">
+              <Link to="/demo" className="flex items-center gap-1.5">
+                <Sparkles className="h-4 w-4" />
+                Demo Access
+              </Link>
+            </Button>
             <Button variant="outline" asChild className="hover:bg-primary/5">
               <Link to="/login">Login</Link>
             </Button>
@@ -184,10 +190,10 @@ const Home = () => {
                   <Rocket className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
                 </Link>
               </Button>
-              <Button size="lg" variant="outline" asChild className="text-lg px-8 py-6 border-2 hover:bg-primary/5 group">
-                <Link to="/login">
-                  <Play className="mr-2 h-5 w-5" />
-                  Watch Demo
+              <Button size="lg" variant="outline" asChild className="text-lg px-8 py-6 border-2 hover:bg-primary/5 group border-primary/30">
+                <Link to="/demo">
+                  <Sparkles className="mr-2 h-5 w-5 text-primary" />
+                  Explore Demo
                 </Link>
               </Button>
             </div>
@@ -325,6 +331,14 @@ const Home = () => {
                   <span>AI homework help</span>
                 </li>
               </ul>
+              <div className="mt-6 pt-4 border-t border-border/50">
+                <Button variant="outline" asChild className="w-full group hover:bg-primary hover:text-primary-foreground border-primary/30">
+                  <Link to="/demo/student">
+                    <span>Try Student Demo</span>
+                    <ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" />
+                  </Link>
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -356,6 +370,14 @@ const Home = () => {
                   <span>Performance insights</span>
                 </li>
               </ul>
+              <div className="mt-6 pt-4 border-t border-border/50">
+                <Button variant="outline" asChild className="w-full group hover:bg-emerald-600 hover:text-white border-emerald-500/30">
+                  <Link to="/demo/teacher">
+                    <span>Try Teacher Demo</span>
+                    <ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" />
+                  </Link>
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -387,6 +409,14 @@ const Home = () => {
                   <span>Platform settings</span>
                 </li>
               </ul>
+              <div className="mt-6 pt-4 border-t border-border/50">
+                <Button variant="outline" asChild className="w-full group hover:bg-amber-600 hover:text-white border-amber-500/30">
+                  <Link to="/demo/admin">
+                    <span>Try Admin Demo</span>
+                    <ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" />
+                  </Link>
+                </Button>
+              </div>
             </div>
           </div>
         </div>

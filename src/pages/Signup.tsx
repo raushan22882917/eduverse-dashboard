@@ -112,6 +112,12 @@ const Signup = () => {
                 Back to Home
               </Link>
             </Button>
+            <Button variant="outline" asChild className="hover:bg-primary/5 border-primary/30 text-primary">
+              <Link to="/demo" className="flex items-center gap-1.5">
+                <Sparkles className="h-3.5 w-3.5" />
+                Try Demo
+              </Link>
+            </Button>
             <Button variant="outline" asChild className="hover:bg-primary/5">
               <Link to="/login">Sign In</Link>
             </Button>
@@ -298,6 +304,14 @@ const Signup = () => {
                         Sign in here
                       </Link>
                     </p>
+                    <div className="pt-2">
+                      <Button variant="ghost" asChild className="w-full text-xs text-muted-foreground hover:text-primary">
+                        <Link to="/demo" className="flex items-center justify-center gap-1.5">
+                          <Sparkles className="h-3.5 w-3.5 text-primary" />
+                          <span>Just looking around? <strong>Explore Demo Dashboard</strong></span>
+                        </Link>
+                      </Button>
+                    </div>
                   </div>
                 </CardFooter>
               </form>

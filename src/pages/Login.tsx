@@ -8,6 +8,7 @@ import { GraduationCap, Sparkles, BookOpen, Users, Shield, ArrowLeft } from "luc
 import InlineLoader from "@/components/InlineLoader";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 
 const Login = () => {
   const [email, setEmail] = useState("");
@@ -15,6 +16,7 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { loginAsDemo } = useAuth();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -107,7 +109,13 @@ const Login = () => {
                 Back to Home
               </Link>
             </Button>
-            <Button variant="outline" asChild className="hover:bg-primary/5">
+            <Button variant="outline" asChild className="hover:bg-primary/5 border-primary/30 text-primary">
+              <Link to="/demo" className="flex items-center gap-1.5">
+                <Sparkles className="h-3.5 w-3.5" />
+                Try Demo
+              </Link>
+            </Button>
+            <Button variant="default" asChild>
               <Link to="/signup">Sign Up</Link>
             </Button>
           </div>
@@ -226,7 +234,65 @@ const Login = () => {
                       "Sign In"
                     )}
                   </Button>
-                  <div className="text-center">
+
+                  {/* Instant Demo Access Divider & Options */}
+                  <div className="w-full space-y-3 pt-1">
+                    <div className="relative">
+                      <div className="absolute inset-0 flex items-center">
+                        <span className="w-full border-t border-border" />
+                      </div>
+                      <div className="relative flex justify-center text-xs uppercase">
+                        <span className="bg-card px-2 text-muted-foreground font-semibold">Or Instant Demo Access</span>
+                      </div>
+                    </div>
+
+                    <div className="p-3.5 rounded-xl bg-gradient-to-r from-primary/10 via-purple-500/10 to-amber-500/10 border border-primary/20 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 text-xs font-semibold text-primary">
+                          <Sparkles className="h-3.5 w-3.5" />
+                          <span>Explore all features without login:</span>
+                        </div>
+                        <Link to="/demo" className="text-xs text-muted-foreground hover:text-primary transition-colors font-medium">
+                          All roles →
+                        </Link>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <Button 
+                          type="button" 
+                          variant="outline" 
+                          size="sm" 
+                          className="text-xs font-medium h-9 hover:bg-primary hover:text-primary-foreground border-primary/30 transition-all flex items-center justify-center gap-1"
+                          onClick={() => loginAsDemo('student')}
+                        >
+                          <GraduationCap className="h-3.5 w-3.5" />
+                          <span>Student</span>
+                        </Button>
+                        <Button 
+                          type="button" 
+                          variant="outline" 
+                          size="sm" 
+                          className="text-xs font-medium h-9 hover:bg-emerald-600 hover:text-white border-emerald-500/30 transition-all flex items-center justify-center gap-1"
+                          onClick={() => loginAsDemo('teacher')}
+                        >
+                          <Users className="h-3.5 w-3.5" />
+                          <span>Teacher</span>
+                        </Button>
+                        <Button 
+                          type="button" 
+                          variant="outline" 
+                          size="sm" 
+                          className="text-xs font-medium h-9 hover:bg-amber-600 hover:text-white border-amber-500/30 transition-all flex items-center justify-center gap-1"
+                          onClick={() => loginAsDemo('admin')}
+                        >
+                          <Shield className="h-3.5 w-3.5" />
+                          <span>Admin</span>
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-center pt-1">
                     <p className="text-sm text-muted-foreground">
                       Don't have an account?{" "}
                       <Link to="/signup" className="text-primary hover:underline font-medium">
